@@ -1,20 +1,4 @@
-# Node dependencies
+# .gitignore
 node_modules/
-
-# Build output
-dist/
-build/
-
-# Caches
 .cache/
-*.pack
-*.log
-
-# IDE/Editor
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
+.pack
