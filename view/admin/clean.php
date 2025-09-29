@@ -114,7 +114,7 @@ $lists = $_SESSION['uploaded_lists'] ?? [];
 #cleanProgressPercent {
   font-size: 14px;
   font-weight: 600;
-  color: #dc3545;
+  color: #dc3545; /* 🔴 Matches spinner color */
 }
 
 @keyframes spin {
@@ -126,19 +126,9 @@ $lists = $_SESSION['uploaded_lists'] ?? [];
 function startCleaning() {
   document.getElementById('cleaningOverlay').style.display = 'flex';
 
-  // Tell PHP to start cleaning
+  // tell PHP to start cleaning
   fetch('../../controller/clean_process.php?start=1')
-    .then(res => res.json())
-    .then(startRes => {
-      if (startRes.status === "error") {
-        document.querySelector('#cleaningOverlay .loading-text').innerText = "❌ " + startRes.message;
-        setTimeout(() => {
-          document.getElementById('cleaningOverlay').style.display = 'none';
-        }, 3000);
-        return;
-      }
-
-      // Poll progress every second
+    .then(() => {
       let progressInterval = setInterval(() => {
         fetch('../../controller/clean_process.php?progress=1')
           .then(res => res.json())
@@ -150,15 +140,7 @@ function startCleaning() {
             document.getElementById('cleanProgressPercent').innerText = percent + "%";
             document.querySelector('#cleaningOverlay .loading-text').innerText = data.message;
 
-            if (data.status === "error") {
-              clearInterval(progressInterval);
-              document.querySelector('#cleaningOverlay .loading-text').innerText = "❌ " + (data.message || "Cleaning failed.");
-              setTimeout(() => {
-                document.getElementById('cleaningOverlay').style.display = 'none';
-              }, 4000);
-            }
-
-            if (percent >= 100 && data.status === "completed") {
+            if (percent >= 100) {
               clearInterval(progressInterval);
               document.querySelector('#cleaningOverlay .loading-text').innerText = "✅ Cleaning complete! Redirecting...";
               setTimeout(() => {
@@ -166,23 +148,10 @@ function startCleaning() {
               }, 1000);
             }
           })
-          .catch(err => {
-            console.error("Progress error:", err);
-            clearInterval(progressInterval);
-            document.querySelector('#cleaningOverlay .loading-text').innerText = "⚠️ Error fetching progress.";
-            setTimeout(() => {
-              document.getElementById('cleaningOverlay').style.display = 'none';
-            }, 3000);
-          });
+          .catch(err => console.error("Progress error:", err));
       }, 1000);
     })
-    .catch(err => {
-      console.error("Start error:", err);
-      document.querySelector('#cleaningOverlay .loading-text').innerText = "⚠️ Failed to start cleaning.";
-      setTimeout(() => {
-        document.getElementById('cleaningOverlay').style.display = 'none';
-      }, 3000);
-    });
+    .catch(err => console.error("Start error:", err));
 }
 </script>
 

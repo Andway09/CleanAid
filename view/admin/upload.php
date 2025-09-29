@@ -106,35 +106,18 @@ session_start(); ?>
 
     xhr.onload = function () {
       if (xhr.status === 200) {
-        try {
-          const response = JSON.parse(xhr.responseText);
-
-          if (response.status === "success") {
-            loadingText.innerText = "✅ Upload complete! Redirecting...";
-            setTimeout(() => {
-              window.location.href = "../admin/clean.php";
-            }, 1000);
-          } else {
-            loadingText.innerHTML = response.message || "❌ Upload failed.";
-            progressBar.style.width = "0%";
-            progressPercent.innerText = "0%";
-
-            setTimeout(() => {
-              loadingOverlay.style.display = "none";
-            }, 3000);
-          }
-        } catch (e) {
-          alert("⚠️ Invalid server response.");
-          loadingOverlay.style.display = "none";
-        }
+        loadingText.innerText = "✅ Upload complete! Redirecting...";
+        setTimeout(() => {
+          window.location.href = "../admin/clean.php";
+        }, 1000);
       } else {
-        alert("❌ Upload failed (status " + xhr.status + ").");
+        alert("❌ Upload failed.");
         loadingOverlay.style.display = 'none';
       }
     };
 
     xhr.onerror = function () {
-      alert("⚠️ Network or server error.");
+      alert("⚠️ Upload error.");
       loadingOverlay.style.display = 'none';
     };
 
@@ -187,7 +170,7 @@ session_start(); ?>
       case 'csv':
         return 'https://cdn-icons-png.flaticon.com/512/9496/9496460.png';
       case 'xls':
-        return 'https://cdn-icons-png.flaticon.com/512/9496/9496456.png';
+        return 'https://cdn-icons-png.flaticon.com/512/9496/9496456.png'
       case 'xlsx':
         return 'https://cdn-icons-png.flaticon.com/512/9496/9496502.png';
       default:
@@ -197,6 +180,7 @@ session_start(); ?>
 </script>
 
 <style>
+  /* File preview styles (same as before) */
   .file-preview-row {
     display: flex;
     flex-wrap: wrap;
@@ -256,6 +240,7 @@ session_start(); ?>
     background: #e9e9e9;
   }
 
+  /* Loading overlay styles */
   #loadingOverlay {
     position: fixed;
     top: 0; left: 0;

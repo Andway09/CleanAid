@@ -1,127 +1,190 @@
 <?php
+// controller/upload_process.php
 session_start();
 include('../dB/config.php');
-header('Content-Type: application/json');
 
-// Allow longer execution for large uploads
-ini_set('max_execution_time', 300);
-ini_set('memory_limit', '512M');
+// Composer autoloader is in project root/vendor (controller is one level below root)
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 /**
- * Insert beneficiaries in chunks of 5000 for performance
+ * Normalize many common date formats to YYYY-MM-DD.
  */
-function insertBeneficiaries($conn, $rows, $listId, $chunkSize = 5000) {
-    $inserted = 0;
+function formatDate($dateStr) {
+    if (!$dateStr) return null;
+    $dateStr = trim($dateStr);
 
-    for ($i = 0; $i < count($rows); $i += $chunkSize) {
-        $chunk = array_slice($rows, $i, $chunkSize);
-        $values = [];
+    // d/m/Y (e.g., 31/12/2024)
+    $dt = DateTime::createFromFormat('d/m/Y', $dateStr);
+    if ($dt && $dt->format('d/m/Y') === $dateStr) return $dt->format('Y-m-d');
 
-        foreach ($chunk as $row) {
-            $first_name   = $conn->real_escape_string($row['first_name'] ?? '');
-            $last_name    = $conn->real_escape_string($row['last_name'] ?? '');
-            $middle_name  = $conn->real_escape_string($row['middle_name'] ?? '');
-            $suffix       = $conn->real_escape_string($row['suffix'] ?? '');
-            $birth_date   = $conn->real_escape_string($row['birth_date'] ?? '');
-            $region       = $conn->real_escape_string($row['region'] ?? '');
-            $province     = $conn->real_escape_string($row['province'] ?? '');
-            $city         = $conn->real_escape_string($row['city'] ?? '');
-            $barangay     = $conn->real_escape_string($row['barangay'] ?? '');
-            $civil_status = $conn->real_escape_string($row['civil_status'] ?? '');
+    // m/d/Y (e.g., 12/31/2024)
+    $dt = DateTime::createFromFormat('m/d/Y', $dateStr);
+    if ($dt && $dt->format('m/d/Y') === $dateStr) return $dt->format('Y-m-d');
 
-            $values[] = "(
-                $listId,
-                '$first_name',
-                '$last_name',
-                '$middle_name',
-                '$suffix',
-                '$birth_date',
-                '$region',
-                '$province',
-                '$city',
-                '$barangay',
-                '$civil_status'
-            )";
-        }
+    // Y-m-d (already normalized)
+    $dt = DateTime::createFromFormat('Y-m-d', $dateStr);
+    if ($dt && $dt->format('Y-m-d') === $dateStr) return $dt->format('Y-m-d');
 
-        if (!empty($values)) {
-            $sql = "INSERT INTO beneficiary (
-                        list_id, first_name, last_name, middle_name, suffix, birth_date,
-                        region, province, city, barangay, civil_status
-                    ) VALUES " . implode(",", $values);
-
-            if (!$conn->query($sql)) {
-                throw new Exception("Insert failed: " . $conn->error);
-            }
-
-            $inserted += count($chunk);
-        }
+    // Excel serial date (numeric)
+    if (is_numeric($dateStr)) {
+        $origin = new DateTime('1899-12-30'); // Excel epoch
+        $origin->modify("+" . intval($dateStr) . " days");
+        return $origin->format('Y-m-d');
     }
 
-    return $inserted;
+    // Last attempt: strtotime
+    $ts = strtotime($dateStr);
+    if ($ts) return date('Y-m-d', $ts);
+
+    return null;
 }
 
-try {
-    if (!isset($_FILES['file'])) {
-        throw new Exception("No file uploaded.");
-    }
+/**
+ * Insert a beneficiary row with prepared statements.
+ */
+function insertBeneficiary($conn, $listId, $first_name, $last_name, $middle_name, $ext_name, $birth_date, $region, $province, $city, $barangay, $marital) {
+    $stmt = $conn->prepare("
+        INSERT INTO beneficiary
+        (list_id, first_name, last_name, middle_name, ext_name, birth_date, region, province, city, barangay, marital_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->bind_param(
+        "issssssssss",
+        $listId,
+        $first_name, $last_name, $middle_name, $ext_name,
+        $birth_date, $region, $province, $city, $barangay, $marital
+    );
+    $stmt->execute();
+}
 
-    $files = $_FILES['file'];
-    $uploadedLists = [];
-
-    // Loop through each uploaded file
-    for ($i = 0; $i < count($files['name']); $i++) {
-        $tmpName = $files['tmp_name'][$i];
-        $fileName = $files['name'][$i];
-
-        if (!is_uploaded_file($tmpName)) {
-            throw new Exception("Upload failed for $fileName.");
-        }
-
-        // Save file info in beneficiarylist
-        $conn->query("INSERT INTO beneficiarylist (fileName, status) VALUES ('$fileName', 'uploaded')");
-        $listId = $conn->insert_id;
-
-        // Example: parse CSV (adjust for XLSX if needed)
-        $rows = [];
-        if (($handle = fopen($tmpName, "r")) !== false) {
-            $header = fgetcsv($handle); // skip header
-            while (($data = fgetcsv($handle)) !== false) {
-                $rows[] = [
-                    'first_name'   => $data[0] ?? '',
-                    'last_name'    => $data[1] ?? '',
-                    'middle_name'  => $data[2] ?? '',
-                    'suffix'       => $data[3] ?? '',
-                    'birth_date'   => $data[4] ?? '',
-                    'region'       => $data[5] ?? '',
-                    'province'     => $data[6] ?? '',
-                    'city'         => $data[7] ?? '',
-                    'barangay'     => $data[8] ?? '',
-                    'civil_status' => $data[9] ?? ''
-                ];
-            }
-            fclose($handle);
-        }
-
-        // Insert rows in chunks
-        $totalInserted = insertBeneficiaries($conn, $rows, $listId);
-
-        // Save processing_engine record
-        $conn->query("
-            INSERT INTO processing_engine (list_id, processing_date, status, total_records, processed_records)
-            VALUES ($listId, NOW(), 'uploaded', $totalInserted, 0)
-        ");
-
-        $uploadedLists[] = $listId;
-    }
-
-    // Save uploaded list IDs in session for clean.php
-    $_SESSION['uploaded_lists'] = $uploadedLists;
-
-    echo json_encode(["status" => "success", "lists" => $uploadedLists]);
-    exit;
-
-} catch (Exception $e) {
-    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+// -----------------------------------------------------------------------------
+// Validate request & files
+// -----------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['file'])) {
+    $_SESSION['error'] = "❌ No files uploaded.";
+    header("Location: ../view/admin/clean.php");
     exit;
 }
+
+$files  = $_FILES['file'];
+$userId = $_SESSION['user_id'] ?? 1; // adjust if your session uses a different key
+
+$_SESSION['uploaded_lists'] = [];
+$_SESSION['upload_errors']  = [];
+
+// -----------------------------------------------------------------------------
+// Process each uploaded file
+// -----------------------------------------------------------------------------
+for ($i = 0; $i < count($files['name']); $i++) {
+    $filename  = basename($files['name'][$i]);
+    $tmpName   = $files['tmp_name'][$i];
+    $mime      = $files['type'][$i] ?? 'application/octet-stream';
+    $size      = $files['size'][$i] ?? 0;
+    $ext       = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+    // Basic validations
+    if (!is_uploaded_file($tmpName)) {
+        $_SESSION['upload_errors'][] = "❌ Invalid upload for $filename";
+        continue;
+    }
+    if ($size <= 0 || $size > 50 * 1024 * 1024) { // 50 MB limit
+        $_SESSION['upload_errors'][] = "❌ File too large or empty: $filename";
+        continue;
+    }
+    if (!in_array($ext, ['csv', 'xls', 'xlsx'])) {
+        $_SESSION['upload_errors'][] = "❌ Unsupported file type ($ext) for $filename";
+        continue;
+    }
+
+    // 1) Create beneficiarylist row (we only track fileName, no uploads table)
+    $stmtList = $conn->prepare("
+        INSERT INTO beneficiarylist (fileName, date_submitted, status, user_id)
+        VALUES (?, NOW(), 'pending', ?)
+    ");
+    $stmtList->bind_param("si", $filename, $userId);
+    $stmtList->execute();
+    $listId = $conn->insert_id;
+    $_SESSION['uploaded_lists'][] = $listId;
+
+    // 2) Create processing record
+    $stmtProc = $conn->prepare("
+        INSERT INTO processing_engine (list_id, processing_date, status)
+        VALUES (?, NOW(), 'in_progress')
+    ");
+    $stmtProc->bind_param("i", $listId);
+    $stmtProc->execute();
+    $processingId = $conn->insert_id;
+
+    // 3) Parse directly from the temporary uploaded file path
+    try {
+        if ($ext === 'csv') {
+            $f = fopen($tmpName, 'r');
+            if (!$f) {
+                throw new RuntimeException("Cannot open CSV stream.");
+            }
+            $rowNum = 0;
+            while (($row = fgetcsv($f, 0, ",")) !== false) {
+                $rowNum++;
+                if ($rowNum === 1) continue; // skip header
+
+                // Map columns (adjust indices if your file layout differs)
+                $first_name  = trim($row[2] ?? '');
+                $last_name   = trim($row[3] ?? '');
+                $middle_name = trim($row[4] ?? '');
+                $ext_name    = trim($row[5] ?? '');
+                $birth_date  = formatDate($row[6] ?? '');
+                $region      = trim($row[7] ?? '');
+                $province    = trim($row[8] ?? '');
+                $city        = trim($row[9] ?? '');
+                $barangay    = trim($row[10] ?? '');
+                $marital     = trim($row[11] ?? '');
+
+                insertBeneficiary($conn, $listId, $first_name, $last_name, $middle_name, $ext_name, $birth_date, $region, $province, $city, $barangay, $marital);
+            }
+            fclose($f);
+        } else {
+            // XLS/XLSX via PhpSpreadsheet
+            $spreadsheet = IOFactory::load($tmpName);
+            $sheetData   = $spreadsheet->getActiveSheet()->toArray();
+
+            foreach ($sheetData as $idx => $row) {
+                if ($idx === 0) continue; // header row
+
+                $first_name  = trim($row[2] ?? '');
+                $last_name   = trim($row[3] ?? '');
+                $middle_name = trim($row[4] ?? '');
+                $ext_name    = trim($row[5] ?? '');
+                $birth_date  = formatDate($row[6] ?? '');
+                $region      = trim($row[7] ?? '');
+                $province    = trim($row[8] ?? '');
+                $city        = trim($row[9] ?? '');
+                $barangay    = trim($row[10] ?? '');
+                $marital     = trim($row[11] ?? '');
+
+                insertBeneficiary($conn, $listId, $first_name, $last_name, $middle_name, $ext_name, $birth_date, $region, $province, $city, $barangay, $marital);
+            }
+        }
+
+        // 4) Mark processing complete
+        $stmtDone = $conn->prepare("UPDATE processing_engine SET status='completed' WHERE processing_id=?");
+        $stmtDone->bind_param("i", $processingId);
+        $stmtDone->execute();
+    } catch (Throwable $e) {
+        // Mark as failed and record error
+        $stmtFail = $conn->prepare("UPDATE processing_engine SET status='failed' WHERE processing_id=?");
+        $stmtFail->bind_param("i", $processingId);
+        $stmtFail->execute();
+
+        $_SESSION['upload_errors'][] = "⚠️ Failed to parse $filename: " . $e->getMessage();
+    }
+}
+
+// Final redirect
+if (!empty($_SESSION['upload_errors'])) {
+    $_SESSION['error'] = implode("<br>", $_SESSION['upload_errors']);
+}
+$_SESSION['success'] = "✅ Upload complete. Beneficiary list(s) created and records imported.";
+header("Location: ../view/admin/clean.php");
+exit;
