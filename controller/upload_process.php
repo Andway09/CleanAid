@@ -171,11 +171,22 @@ for ($i = 0; $i < count($files['name']); $i++) {
         $stmtDone = $conn->prepare("UPDATE processing_engine SET status='completed' WHERE processing_id=?");
         $stmtDone->bind_param("i", $processingId);
         $stmtDone->execute();
+
+        // ✅ Also update beneficiarylist so dashboard reflects status
+        $stmtListDone = $conn->prepare("UPDATE beneficiarylist SET status='processed' WHERE list_id=?");
+        $stmtListDone->bind_param("i", $listId);
+        $stmtListDone->execute();
+
     } catch (Throwable $e) {
         // Mark as failed and record error
         $stmtFail = $conn->prepare("UPDATE processing_engine SET status='failed' WHERE processing_id=?");
         $stmtFail->bind_param("i", $processingId);
         $stmtFail->execute();
+
+        // ✅ Also mark beneficiarylist as failed
+        $stmtListFail = $conn->prepare("UPDATE beneficiarylist SET status='failed' WHERE list_id=?");
+        $stmtListFail->bind_param("i", $listId);
+        $stmtListFail->execute();
 
         $_SESSION['upload_errors'][] = "⚠️ Failed to parse $filename: " . $e->getMessage();
     }
