@@ -7,11 +7,11 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
 # -----------------------
-# Tunable thresholds (relaxed)
+# Tunable thresholds (tightened for accuracy)
 # -----------------------
-FUZZY_NAME_THRESHOLD = 0.80     # was 0.90
-PHONETIC_NAME_THRESHOLD = 0.65  # was 0.70
-REQUIRE_SAME_DOB_FOR_FUZZY = False  # allow fuzzy matches even if DOB differs
+FUZZY_NAME_THRESHOLD = 0.87
+PHONETIC_NAME_THRESHOLD = 0.75
+REQUIRE_SAME_DOB_FOR_FUZZY = True
 CANDIDATE_GROUP_BY = ("province", "city")
 
 # -----------------------
@@ -144,10 +144,20 @@ def analyze(rows):
             "barangay": norm_text(r.get("barangay"))
         })
 
+    # Required fields
     required_fields = ["first_name", "last_name", "birth_date", "region", "province", "city", "barangay"]
-    missing_rows = [p["raw"] for p in prepared if any(is_blank(p["raw"].get(f)) for f in required_fields)]
 
-    exact_pairs, used_pairs = [], set()
+    missing_rows = []
+    missing_set = set()
+    for p in prepared:
+        if any(is_blank(p["raw"].get(f)) for f in required_fields):
+            missing_rows.append(p["raw"])
+            missing_set.add(p["idx"])
+
+    exact_pairs, fuzzy_pairs, phonetic_pairs = [], [], []
+    used_pairs = set()
+
+    # --- Exact duplicates
     buckets = {}
     for p in prepared:
         key = (p["name_key"], p["birth_date"], p["region"], p["province"], p["city"], p["barangay"])
@@ -158,7 +168,7 @@ def analyze(rows):
                 exact_pairs.append({"row1_index": i, "row2_index": j})
                 used_pairs.add((i, j))
 
-    fuzzy_pairs, phonetic_pairs = [], []
+    # --- Fuzzy + phonetic
     grp = {}
     for p in prepared:
         gkey = tuple(p.get(k, "") for k in CANDIDATE_GROUP_BY)
@@ -174,12 +184,20 @@ def analyze(rows):
             same_dob = (i["birth_date"] != "" and i["birth_date"] == j["birth_date"])
             phonetic_match = (i["first_sdx"] == j["first_sdx"] and i["last_sdx"] == j["last_sdx"])
 
-            if sim >= FUZZY_NAME_THRESHOLD and (same_dob or not REQUIRE_SAME_DOB_FOR_FUZZY):
-                fuzzy_pairs.append({"row1_index": i_idx, "row2_index": j_idx, "similarity": int(round(sim*100))})
+            if sim >= FUZZY_NAME_THRESHOLD and same_dob:
+                fuzzy_pairs.append({
+                    "row1_index": i_idx,
+                    "row2_index": j_idx,
+                    "similarity": int(round(sim * 100))
+                })
                 used_pairs.add((i_idx, j_idx))
                 continue
             if phonetic_match and sim >= PHONETIC_NAME_THRESHOLD:
-                phonetic_pairs.append({"row1_index": i_idx, "row2_index": j_idx, "phonetic_code": f"{i['first_sdx']}-{i['last_sdx']}"})
+                phonetic_pairs.append({
+                    "row1_index": i_idx,
+                    "row2_index": j_idx,
+                    "phonetic_code": f"{i['first_sdx']}-{i['last_sdx']}"
+                })
                 used_pairs.add((i_idx, j_idx))
 
     return sanitize({
@@ -190,11 +208,16 @@ def analyze(rows):
             "fuzzy_duplicates_count": len(fuzzy_pairs),
             "sounds_like_count": len(phonetic_pairs),
         },
+        # Row can appear in both duplicates + missing
         "missing_data": missing_rows,
         "exact_duplicates": exact_pairs,
         "fuzzy_duplicates": fuzzy_pairs,
         "sounds_like_duplicates": phonetic_pairs
     })
+
+# -----------------------
+# Entrypoint
+# -----------------------
 
 def main():
     try:

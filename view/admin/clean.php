@@ -138,6 +138,8 @@ function startCleaning() {
             const percent = data.percent;
             document.getElementById('cleanProgressBar').style.width = percent + "%";
             document.getElementById('cleanProgressPercent').innerText = percent + "%";
+
+            // Show actual message (like "6000/50000 processed")
             document.querySelector('#cleaningOverlay .loading-text').innerText = data.message;
 
             if (percent >= 100) {

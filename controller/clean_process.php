@@ -1,55 +1,54 @@
 <?php
-session_start();
 include('../dB/config.php');
 header('Content-Type: application/json');
 
-// ------------------------------------
-// START CLEANING
-// ------------------------------------
+// -------------------- START CLEANING --------------------
 if (isset($_GET['start'])) {
+    session_start();
+
     $_SESSION['clean_progress'] = 0;
     $_SESSION['clean_message']  = "Cleaning started...";
 
-    // Count total beneficiaries
+    // --- Save uploaded lists into session for review.php
+    if (!empty($_SESSION['uploaded_lists'])) {
+        $_SESSION['review_lists'] = $_SESSION['uploaded_lists'];
+    }
+
     $res = $conn->query("SELECT COUNT(*) as total FROM beneficiary");
     $total = $res->fetch_assoc()['total'] ?? 0;
 
-    $_SESSION['clean_total'] = $total;
-    $_SESSION['clean_offset'] = 0;
-    $_SESSION['clean_batchSize'] = 2000; // 2k–5k recommended
+    $_SESSION['clean_total']     = $total;
+    $_SESSION['clean_offset']    = 0;
+    $_SESSION['clean_batchSize'] = 500; // safe batch size
+
+    session_write_close(); // unlock session
 
     echo json_encode(["status" => "started", "total" => $total]);
     exit;
 }
 
-// ------------------------------------
-// PROGRESS CHECK (process next batch)
-// ------------------------------------
+// -------------------- PROGRESS CHECK --------------------
 if (isset($_GET['progress'])) {
-    $offset = $_SESSION['clean_offset'] ?? 0;
-    $batchSize = $_SESSION['clean_batchSize'] ?? 2000;
-    $total = $_SESSION['clean_total'] ?? 1;
+    session_start();
+    $offset    = $_SESSION['clean_offset'] ?? 0;
+    $batchSize = $_SESSION['clean_batchSize'] ?? 500;
+    $total     = $_SESSION['clean_total'] ?? 1;
+    session_write_close(); // unlock quickly
 
-    // Fetch one batch
+    // --- Fetch next batch
     $rows = [];
     $res = $conn->query("SELECT * FROM beneficiary ORDER BY beneficiary_id LIMIT $offset, $batchSize");
     while ($r = $res->fetch_assoc()) {
         $rows[] = $r;
     }
-
     $processedNow = count($rows);
 
+    // --- Run analyzer only if we got rows
     if ($processedNow > 0) {
         $jsonInput = json_encode($rows);
-
-        // Run Python analyzer
-        $cmd = "python3 ../controller/clean_data.py";
-        $descriptorspec = [
-            0 => ["pipe", "r"],
-            1 => ["pipe", "w"],
-            2 => ["pipe", "w"]
-        ];
-        $proc = proc_open($cmd, $descriptorspec, $pipes);
+        $cmd = "python3 ../clean_data.py";
+        $spec = [0=>["pipe","r"],1=>["pipe","w"],2=>["pipe","w"]];
+        $proc = proc_open($cmd, $spec, $pipes);
 
         if (is_resource($proc)) {
             fwrite($pipes[0], $jsonInput);
@@ -57,79 +56,80 @@ if (isset($_GET['progress'])) {
 
             $output = stream_get_contents($pipes[1]);
             fclose($pipes[1]);
+
+            $err = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+
             proc_close($proc);
 
             $result = json_decode($output, true);
 
             if (json_last_error() === JSON_ERROR_NONE && is_array($result)) {
-
-                // helper to insert flagged records
                 $insertFlag = function($id, $reason) use ($conn) {
                     $id = intval($id);
                     $reason = $conn->real_escape_string($reason);
-                    $conn->query("
-                        INSERT INTO duplicaterecord (beneficiary_id, flagged_reason, status)
-                        VALUES ($id, '$reason', 'flagged')
-                        ON DUPLICATE KEY UPDATE flagged_reason=VALUES(flagged_reason)
-                    ");
+
+                    // Check if record already exists
+                    $check = $conn->query("SELECT flagged_reason FROM duplicaterecord WHERE beneficiary_id=$id");
+                    if ($check && $check->num_rows > 0) {
+                        $existing = $check->fetch_assoc()['flagged_reason'];
+                        // Avoid duplicate text
+                        if (stripos($existing, $reason) === false) {
+                            $newReason = $conn->real_escape_string($existing . "; " . $reason);
+                            $conn->query("UPDATE duplicaterecord SET flagged_reason='$newReason' WHERE beneficiary_id=$id");
+                        }
+                    } else {
+                        $conn->query("
+                            INSERT INTO duplicaterecord (beneficiary_id, flagged_reason, status)
+                            VALUES ($id, '$reason', 'flagged')
+                        ");
+                    }
                 };
 
-                // Exact duplicates
-                if (!empty($result['exact_duplicates'])) {
-                    foreach ($result['exact_duplicates'] as $pair) {
-                        $id1 = $rows[$pair['row1_index']]['beneficiary_id'];
-                        $id2 = $rows[$pair['row2_index']]['beneficiary_id'];
-                        $insertFlag($id1, "Exact Duplicate");
-                        $insertFlag($id2, "Exact Duplicate");
-                    }
+                // --- Exact duplicates
+                foreach ($result['exact_duplicates'] ?? [] as $pair) {
+                    $insertFlag($rows[$pair['row1_index']]['beneficiary_id'], "Exact Duplicate");
+                    $insertFlag($rows[$pair['row2_index']]['beneficiary_id'], "Exact Duplicate");
                 }
 
-                // Fuzzy duplicates
-                if (!empty($result['fuzzy_duplicates'])) {
-                    foreach ($result['fuzzy_duplicates'] as $pair) {
-                        $id1 = $rows[$pair['row1_index']]['beneficiary_id'];
-                        $id2 = $rows[$pair['row2_index']]['beneficiary_id'];
-                        $sim = intval($pair['similarity']);
-                        $reason = "Fuzzy Duplicate ($sim% match)";
-                        $insertFlag($id1, $reason);
-                        $insertFlag($id2, $reason);
-                    }
+                // --- Fuzzy duplicates
+                foreach ($result['fuzzy_duplicates'] ?? [] as $pair) {
+                    $insertFlag($rows[$pair['row1_index']]['beneficiary_id'], "Possible Duplicate");
+                    $insertFlag($rows[$pair['row2_index']]['beneficiary_id'], "Possible Duplicate");
                 }
 
-                // Phonetic matches
-                if (!empty($result['sounds_like_duplicates'])) {
-                    foreach ($result['sounds_like_duplicates'] as $pair) {
-                        $id1 = $rows[$pair['row1_index']]['beneficiary_id'];
-                        $id2 = $rows[$pair['row2_index']]['beneficiary_id'];
-                        $code = $conn->real_escape_string($pair['phonetic_code']);
-                        $reason = "Phonetic Match ($code)";
-                        $insertFlag($id1, $reason);
-                        $insertFlag($id2, $reason);
+                // --- Sounds-like duplicates
+                foreach ($result['sounds_like_duplicates'] ?? [] as $pair) {
+                    $insertFlag($rows[$pair['row1_index']]['beneficiary_id'], "Sounds-Like Duplicate");
+                    $insertFlag($rows[$pair['row2_index']]['beneficiary_id'], "Sounds-Like Duplicate");
+                }
+
+                // --- Missing data
+                foreach ($result['missing_data'] ?? [] as $row) {
+                    if (!empty($row['beneficiary_id'])) {
+                        $insertFlag(intval($row['beneficiary_id']), "Missing Data");
                     }
                 }
+            } else {
+                error_log("Python failed: $err");
             }
         }
     }
 
-    // Update offset safely
+    // --- Update progress
+    session_start();
     $_SESSION['clean_offset'] = $offset + $processedNow;
-
-    // Progress percent
     $processed = min($total, $_SESSION['clean_offset']);
-    $percent = $total > 0 ? intval(($processed / $total) * 100) : 100;
+    $percent   = $total > 0 ? intval(($processed / $total) * 100) : 100;
 
-    if ($percent >= 100) {
-        $_SESSION['clean_progress'] = 100;
-        $_SESSION['clean_message'] = "Cleaning completed.";
-    } else {
-        $_SESSION['clean_progress'] = $percent;
-        $_SESSION['clean_message'] = "Cleaning in progress... $percent%";
-    }
+    $_SESSION['clean_progress'] = $percent;
+    $_SESSION['clean_message']  = ($percent >= 100)
+        ? "✅ Cleaning completed. ($processed/$total)"
+        : "Cleaning in progress... ($processed/$total)";
+    $msg = $_SESSION['clean_message'];
+    session_write_close();
 
-    echo json_encode([
-        "percent" => $_SESSION['clean_progress'],
-        "message" => $_SESSION['clean_message']
-    ]);
+    echo json_encode(["percent" => $percent, "message" => $msg]);
     exit;
 }
 ?>
