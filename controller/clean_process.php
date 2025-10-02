@@ -19,7 +19,7 @@ if (isset($_GET['start'])) {
 
     $_SESSION['clean_total']     = $total;
     $_SESSION['clean_offset']    = 0;
-    $_SESSION['clean_batchSize'] = 500; // safe batch size
+    $_SESSION['clean_batchSize'] = 1000; // safe batch size
 
     session_write_close(); // unlock session
 
@@ -31,7 +31,7 @@ if (isset($_GET['start'])) {
 if (isset($_GET['progress'])) {
     session_start();
     $offset    = $_SESSION['clean_offset'] ?? 0;
-    $batchSize = $_SESSION['clean_batchSize'] ?? 500;
+    $batchSize = $_SESSION['clean_batchSize'] ?? 1000;
     $total     = $_SESSION['clean_total'] ?? 1;
     session_write_close(); // unlock quickly
 
