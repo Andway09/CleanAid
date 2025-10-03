@@ -3,11 +3,13 @@ import json
 import math
 import re
 import unicodedata
+import csv
+import os
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
 # -----------------------
-# Tunable thresholds (tightened for accuracy)
+# Tunable thresholds
 # -----------------------
 FUZZY_NAME_THRESHOLD = 0.87
 PHONETIC_NAME_THRESHOLD = 0.75
@@ -93,7 +95,10 @@ def normalize_date(val):
     s = str(val).strip()
     if s == "":
         return ""
-    fmts = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"]
+    fmts = [
+        "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d",
+        "%d-%b-%Y", "%d-%b-%y", "%d-%m-%y"
+    ]
     for f in fmts:
         try:
             return datetime.strptime(s, f).strftime("%Y-%m-%d")
@@ -134,6 +139,7 @@ def analyze(rows):
         prepared.append({
             "idx": idx,
             "raw": r,
+            "source_file": r.get("source_file"),
             "name_key": name_key,
             "first_sdx": soundex(r.get("first_name") or ""),
             "last_sdx": soundex(r.get("last_name") or ""),
@@ -141,21 +147,36 @@ def analyze(rows):
             "region": norm_text(r.get("region")),
             "province": norm_text(r.get("province")),
             "city": norm_text(r.get("city")),
-            "barangay": norm_text(r.get("barangay"))
+            "barangay": norm_text(r.get("barangay")),
+            "reasons": set(),
+            "dup_group": None
         })
 
-    # Required fields
+    # --- Missing data
     required_fields = ["first_name", "last_name", "birth_date", "region", "province", "city", "barangay"]
-
-    missing_rows = []
-    missing_set = set()
     for p in prepared:
         if any(is_blank(p["raw"].get(f)) for f in required_fields):
-            missing_rows.append(p["raw"])
-            missing_set.add(p["idx"])
+            p["reasons"].add("Missing Data")
 
-    exact_pairs, fuzzy_pairs, phonetic_pairs = [], [], []
-    used_pairs = set()
+    # --- Duplicate grouping helper
+    dup_counter = 1
+    def assign_group(i, j):
+        nonlocal dup_counter
+        gi, gj = prepared[i]["dup_group"], prepared[j]["dup_group"]
+        if gi and gj:
+            if gi != gj:
+                for p in prepared:
+                    if p["dup_group"] == gj:
+                        p["dup_group"] = gi
+        elif gi or gj:
+            g = gi or gj
+            prepared[i]["dup_group"] = g
+            prepared[j]["dup_group"] = g
+        else:
+            g = f"DUP{dup_counter}"
+            dup_counter += 1
+            prepared[i]["dup_group"] = g
+            prepared[j]["dup_group"] = g
 
     # --- Exact duplicates
     buckets = {}
@@ -165,8 +186,9 @@ def analyze(rows):
     for idxs in buckets.values():
         if len(idxs) > 1:
             for i, j in all_pairs(sorted(idxs)):
-                exact_pairs.append({"row1_index": i, "row2_index": j})
-                used_pairs.add((i, j))
+                prepared[i]["reasons"].add("Exact Duplicate")
+                prepared[j]["reasons"].add("Exact Duplicate")
+                assign_group(i, j)
 
     # --- Fuzzy + phonetic
     grp = {}
@@ -177,60 +199,85 @@ def analyze(rows):
     for items in grp.values():
         idxs = [it["idx"] for it in items]
         for i_idx, j_idx in all_pairs(idxs):
-            if (i_idx, j_idx) in used_pairs:
-                continue
             i, j = prepared[i_idx], prepared[j_idx]
             sim = name_similarity(i["name_key"], j["name_key"])
             same_dob = (i["birth_date"] != "" and i["birth_date"] == j["birth_date"])
             phonetic_match = (i["first_sdx"] == j["first_sdx"] and i["last_sdx"] == j["last_sdx"])
 
             if sim >= FUZZY_NAME_THRESHOLD and same_dob:
-                fuzzy_pairs.append({
-                    "row1_index": i_idx,
-                    "row2_index": j_idx,
-                    "similarity": int(round(sim * 100))
-                })
-                used_pairs.add((i_idx, j_idx))
-                continue
-            if phonetic_match and sim >= PHONETIC_NAME_THRESHOLD:
-                phonetic_pairs.append({
-                    "row1_index": i_idx,
-                    "row2_index": j_idx,
-                    "phonetic_code": f"{i['first_sdx']}-{i['last_sdx']}"
-                })
-                used_pairs.add((i_idx, j_idx))
+                i["reasons"].add("Possible Duplicate")
+                j["reasons"].add("Possible Duplicate")
+                assign_group(i_idx, j_idx)
+            elif phonetic_match and sim >= PHONETIC_NAME_THRESHOLD:
+                i["reasons"].add("Sounds-Like Duplicate")
+                j["reasons"].add("Sounds-Like Duplicate")
+                assign_group(i_idx, j_idx)
 
-    return sanitize({
-        "summary": {
-            "total_records": len(rows),
-            "missing_count": len(missing_rows),
-            "exact_duplicates_count": len(exact_pairs),
-            "fuzzy_duplicates_count": len(fuzzy_pairs),
-            "sounds_like_count": len(phonetic_pairs),
-        },
-        # Row can appear in both duplicates + missing
-        "missing_data": missing_rows,
-        "exact_duplicates": exact_pairs,
-        "fuzzy_duplicates": fuzzy_pairs,
-        "sounds_like_duplicates": phonetic_pairs
-    })
+    # --- Final flat table
+    table = []
+    for p in prepared:
+        raw = p["raw"]
+        table.append({
+            "Dup Group": p["dup_group"] or "",
+            "Beneficiary ID": raw.get("beneficiary_id"),
+            "List ID": raw.get("list_id"),
+            "Source File": os.path.basename(p["source_file"]),  # ✅ filename only
+            "Full Name": " ".join([str(raw.get("first_name") or ""), str(raw.get("middle_name") or ""), str(raw.get("last_name") or ""), str(raw.get("ext_name") or "")]).strip(),
+            "Birth Date": p["birth_date"],
+            "Region": raw.get("region"),
+            "Province": raw.get("province"),
+            "City": raw.get("city"),
+            "Barangay": raw.get("barangay"),
+            "Marital Status": raw.get("marital_status"),
+            "Reason": ", ".join(sorted(p["reasons"])) if p["reasons"] else ""
+        })
+
+    # ✅ Sort grouped duplicates together
+    table.sort(key=lambda r: (r["Dup Group"] or "ZZZ", r["Full Name"]))
+    return table
 
 # -----------------------
-# Entrypoint
+# File loader + Entrypoint
 # -----------------------
+
+def load_file(filename):
+    with open(filename, newline='', encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        for r in rows:
+            r["source_file"] = os.path.basename(filename)  # ✅ filename only
+            mapping = {
+                "First Name": "first_name",
+                "Middle Name": "middle_name",
+                "Last Name": "last_name",
+                "Ext": "ext_name",
+                "Birth Date": "birth_date",
+                "Region": "region",
+                "Province": "province",
+                "City": "city",
+                "Barangay": "barangay",
+                "Marital Status": "marital_status",
+                "List ID": "list_id",
+                "Beneficiary ID": "beneficiary_id"
+            }
+            for old, new in mapping.items():
+                if old in r:
+                    r[new] = r.pop(old)
+        return rows
 
 def main():
-    try:
-        raw = sys.stdin.read()
-        rows = json.loads(raw) if raw.strip() else []
-        if not isinstance(rows, list):
-            raise ValueError("Top-level JSON must be an array of row objects.")
-    except Exception as e:
-        print(json.dumps({"error": f"Invalid JSON input: {e}"}))
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("files", nargs="+", help="Input files (CSV or JSON)")
+    args = parser.parse_args()
+
+    rows = []
+    for fname in args.files:
+        rows.extend(load_file(fname))
+
     try:
         out = analyze(rows)
-        print(json.dumps(out, ensure_ascii=False))
+        print(json.dumps(out, ensure_ascii=False, indent=2))
     except Exception as e:
         print(json.dumps({"error": f"Analyzer failed: {e}"}))
         sys.exit(1)
