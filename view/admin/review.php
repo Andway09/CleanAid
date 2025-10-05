@@ -24,26 +24,7 @@ if (!empty($_POST['lists']) && is_array($_POST['lists'])) {
 $lists = $_SESSION['uploaded_lists'] ?? [];
 
 /* -----------------------------------------------------------------------
-   2) Optionally re-run cleaning when requested
------------------------------------------------------------------------- */
-if (!empty($_POST['recalculate'])) {
-    // Trigger backend cleaning again
-    $cmd = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? 'python' : 'python3';
-    $scriptPath = escapeshellarg(__DIR__ . '/../../clean_data.py');
-    $process = proc_open("$cmd $scriptPath", [0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']], $pipes);
-    if (is_resource($process)) {
-        fclose($pipes[0]);
-        stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($process);
-    }
-    header("Location: review.php"); // refresh to show new data
-    exit;
-}
-
-/* -----------------------------------------------------------------------
-   3) Load flagged results from DB (instant load)
+   2) Load flagged results directly from DB (instant load)
 ------------------------------------------------------------------------ */
 $allFlagged = [];
 $overall = [
@@ -139,12 +120,12 @@ include("./includes/sidebar.php");
 .alert-success { background: #d1fae5; color: #065f46; }
 
 /* --- Buttons --- */
-.btn-export, .btn-recalc {
+.btn-export {
   background: #2563eb; color: #fff; border: none;
   padding: 10px 16px; border-radius: 6px; cursor: pointer;
   font-size: 0.85rem; margin-top: 12px; transition: background 0.2s ease;
 }
-.btn-export:hover, .btn-recalc:hover { background: #1d4ed8; }
+.btn-export:hover { background: #1d4ed8; }
 
 /* --- General utility --- */
 .page-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 10px; color: #111827; }
@@ -166,11 +147,6 @@ include("./includes/sidebar.php");
           <li><strong>Possible Duplicates:</strong> <?= (int)$overall['fuzzy_duplicates_count'] ?></li>
           <li><strong>Sounds-Like Duplicates:</strong> <?= (int)$overall['sounds_like_count'] ?></li>
         </ul>
-
-        <form method="post" style="display:inline;">
-          <input type="hidden" name="recalculate" value="1">
-          <button type="submit" class="btn-recalc">🔄 Re-Analyze</button>
-        </form>
       </div></div>
 
       <div class="ca-card"><div class="ca-body">
