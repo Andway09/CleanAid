@@ -82,7 +82,7 @@ $lists = $_SESSION['uploaded_lists'] ?? [];
   width: 60px;
   height: 60px;
   border: 6px solid #ddd;
-  border-top: 6px solid #dc3545; /* 🔴 Bootstrap danger red */
+  border-top: 6px solid #dc3545;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: auto;
@@ -107,14 +107,14 @@ $lists = $_SESSION['uploaded_lists'] ?? [];
 #cleanProgressBar {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #dc3545, #ff6b6b); 
+  background: linear-gradient(90deg, #dc3545, #ff6b6b);
   transition: width 0.3s ease;
 }
 
 #cleanProgressPercent {
   font-size: 14px;
   font-weight: 600;
-  color: #dc3545; /* 🔴 Matches spinner color */
+  color: #dc3545;
 }
 
 @keyframes spin {
@@ -123,37 +123,56 @@ $lists = $_SESSION['uploaded_lists'] ?? [];
 </style>
 
 <script>
+// ✅ NEW SSE version — no polling, live progress stream
 function startCleaning() {
-  document.getElementById('cleaningOverlay').style.display = 'flex';
+  const overlay = document.getElementById('cleaningOverlay');
+  const bar = document.getElementById('cleanProgressBar');
+  const percentText = document.getElementById('cleanProgressPercent');
+  const messageText = document.querySelector('#cleaningOverlay .loading-text');
 
-  // tell PHP to start cleaning
-  fetch('../../controller/clean_process.php?start=1')
-    .then(() => {
-      let progressInterval = setInterval(() => {
-        fetch('../../controller/clean_process.php?progress=1')
-          .then(res => res.json())
-          .then(data => {
-            if (!data || typeof data.percent === "undefined") return;
+  overlay.style.display = 'flex';
+  bar.style.width = '0%';
+  percentText.innerText = '0%';
+  messageText.innerText = 'Starting cleaning...';
 
-            const percent = data.percent;
-            document.getElementById('cleanProgressBar').style.width = percent + "%";
-            document.getElementById('cleanProgressPercent').innerText = percent + "%";
+  const source = new EventSource('../../controller/clean_process.php');
 
-            // Show actual message (like "6000/50000 processed")
-            document.querySelector('#cleaningOverlay .loading-text').innerText = data.message;
+  source.onmessage = function(event) {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.error) {
+        messageText.innerText = '❌ ' + data.error;
+        source.close();
+        return;
+      }
 
-            if (percent >= 100) {
-              clearInterval(progressInterval);
-              document.querySelector('#cleaningOverlay .loading-text').innerText = "✅ Cleaning complete! Redirecting...";
-              setTimeout(() => {
-                window.location.href = "review.php";
-              }, 1000);
-            }
-          })
-          .catch(err => console.error("Progress error:", err));
-      }, 1000);
-    })
-    .catch(err => console.error("Start error:", err));
+      if (data.progress !== undefined) {
+        bar.style.width = data.progress + '%';
+        percentText.innerText = data.progress + '%';
+      }
+
+      if (data.message) {
+        messageText.innerText = data.message;
+      }
+
+      if (data.complete) {
+        messageText.innerText = '✅ Cleaning complete! Redirecting...';
+        bar.style.width = '100%';
+        percentText.innerText = '100%';
+        setTimeout(() => {
+          window.location.href = 'review.php';
+        }, 1200);
+        source.close();
+      }
+    } catch (err) {
+      console.error('Invalid SSE data:', event.data);
+    }
+  };
+
+  source.onerror = function() {
+    messageText.innerText = '⚠️ Connection lost or server error.';
+    source.close();
+  };
 }
 </script>
 

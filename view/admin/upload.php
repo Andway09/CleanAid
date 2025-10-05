@@ -1,16 +1,31 @@
 <?php
-session_start(); ?>
+session_start();
 
-<?php include("./includes/header.php"); ?>
-<?php include("./includes/topbar.php"); ?>
-<?php include("./includes/sidebar.php"); ?>
+// ✅ Enforce login (adjust to your auth flow)
+if (!isset($_SESSION['user_id'])) {
+  header('Location: ../../login.php');
+  exit;
+}
+
+// ✅ CSRF token
+if (empty($_SESSION['csrf_token'])) {
+  $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+include("./includes/header.php");
+include("./includes/topbar.php");
+include("./includes/sidebar.php");
+?>
 
 <main class="main bg-body-tertiary" style="min-height: 100vh;">
   <section class="container py-5">
     <h2 class="fw-bold">Data Upload</h2>
     <p class="text-muted">Upload your file/s for beneficiary data processing</p>
 
-    <form id="uploadForm">
+    <form id="uploadForm" autocomplete="off">
+      <!-- CSRF (sent via JS/Fetch) -->
+      <input type="hidden" id="csrfToken" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8'); ?>">
+
       <!-- Dropzone -->
       <div id="dropZone" class="border rounded-4 text-center p-5 shadow-sm"
            style="border: 2px dashed #ccc; cursor: pointer;">
@@ -42,6 +57,13 @@ session_start(); ?>
 </div>
 
 <script>
+  // ===== Config =====
+  const MAX_PER_FILE_MB = 50;                     // server limit mirrors this
+  const MAX_FILES = 20;                           // arbitrary reasonable cap
+  const ALLOWED_EXTS = ['csv','xls','xlsx'];      // UI filter
+  const BYTES_PER_MB = 1024 * 1024;
+
+  // ===== Elements =====
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
   const previewContainer = document.getElementById('previewContainer');
@@ -50,9 +72,42 @@ session_start(); ?>
   const progressBar = document.getElementById('progressBar');
   const progressPercent = document.getElementById('progressPercent');
   const loadingText = document.querySelector('.loading-text');
+  const csrfToken = document.getElementById('csrfToken').value;
 
   let selectedFiles = [];
 
+  // ===== Helpers =====
+  function extOf(name) { return (name.split('.').pop() || '').toLowerCase(); }
+
+  function validateFiles(files) {
+    const errors = [];
+    if (files.length > MAX_FILES) {
+      errors.push(`You selected ${files.length} files. Maximum allowed is ${MAX_FILES}.`);
+    }
+    const names = new Set();
+    for (const f of files) {
+      const ext = extOf(f.name);
+      if (!ALLOWED_EXTS.includes(ext)) {
+        errors.push(`${f.name}: unsupported type ".${ext}". Allowed: ${ALLOWED_EXTS.join(', ')}`);
+      }
+      if (f.size > MAX_PER_FILE_MB * BYTES_PER_MB) {
+        errors.push(`${f.name}: exceeds ${MAX_PER_FILE_MB} MB.`);
+      }
+      const key = f.name.toLowerCase();
+      if (names.has(key)) {
+        errors.push(`${f.name}: duplicate file name in this batch.`);
+      }
+      names.add(key);
+    }
+    return errors;
+  }
+
+  function showErrors(errors) {
+    if (!errors.length) return;
+    alert('Upload blocked:\n\n' + errors.map(e => '• ' + e).join('\n'));
+  }
+
+  // ===== Dropzone interactions =====
   dropZone.addEventListener('click', () => fileInput.click());
 
   dropZone.addEventListener('dragover', e => {
@@ -68,15 +123,25 @@ session_start(); ?>
   dropZone.addEventListener('drop', e => {
     e.preventDefault();
     dropZone.classList.remove('bg-light');
-    selectedFiles = [...selectedFiles, ...Array.from(e.dataTransfer.files)];
+
+    const incoming = Array.from(e.dataTransfer.files);
+    const errors = validateFiles(incoming);
+    if (errors.length) return showErrors(errors);
+
+    selectedFiles = [...selectedFiles, ...incoming];
     renderFilePreview();
   });
 
   fileInput.addEventListener('change', () => {
-    selectedFiles = [...selectedFiles, ...Array.from(fileInput.files)];
+    const incoming = Array.from(fileInput.files);
+    const errors = validateFiles(incoming);
+    if (errors.length) return showErrors(errors);
+
+    selectedFiles = [...selectedFiles, ...incoming];
     renderFilePreview();
   });
 
+  // ===== Submit =====
   document.getElementById('uploadForm').addEventListener('submit', function (e) {
     e.preventDefault();
 
@@ -84,6 +149,10 @@ session_start(); ?>
       alert("❌ No files selected.");
       return;
     }
+
+    // Final client validation before sending
+    const errors = validateFiles(selectedFiles);
+    if (errors.length) return showErrors(errors);
 
     // Show loading overlay
     loadingOverlay.style.display = 'flex';
@@ -93,6 +162,7 @@ session_start(); ?>
 
     const formData = new FormData();
     selectedFiles.forEach(file => formData.append('file[]', file));
+    formData.append('csrf_token', csrfToken);
 
     const xhr = new XMLHttpRequest();
 
@@ -105,14 +175,30 @@ session_start(); ?>
     });
 
     xhr.onload = function () {
-      if (xhr.status === 200) {
-        loadingText.innerText = "✅ Upload complete! Redirecting...";
-        setTimeout(() => {
-          window.location.href = "../admin/clean.php";
-        }, 1000);
-      } else {
-        alert("❌ Upload failed.");
-        loadingOverlay.style.display = 'none';
+      try {
+        const resp = JSON.parse(xhr.responseText || '{}');
+        if (xhr.status === 200 && resp.ok) {
+          loadingText.innerText = "✅ Upload complete! Redirecting...";
+          setTimeout(() => {
+            // server set session messages; redirect target provided
+            window.location.href = resp.redirect || "../admin/clean.php";
+          }, 800);
+        } else {
+          const msg = resp.error || "Upload failed.";
+          alert("❌ " + msg);
+          loadingOverlay.style.display = 'none';
+        }
+      } catch (_e) {
+        // Fallback if non-JSON (should not happen)
+        if (xhr.status === 200) {
+          loadingText.innerText = "✅ Upload complete! Redirecting...";
+          setTimeout(() => {
+            window.location.href = "../admin/clean.php";
+          }, 800);
+        } else {
+          alert("❌ Upload failed.");
+          loadingOverlay.style.display = 'none';
+        }
       }
     };
 
@@ -122,9 +208,11 @@ session_start(); ?>
     };
 
     xhr.open('POST', '../../controller/upload_process.php', true);
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken); // double submit pattern
     xhr.send(formData);
   });
 
+  // ===== Render preview =====
   function renderFilePreview() {
     const dt = new DataTransfer();
     selectedFiles.forEach(file => dt.items.add(file));
@@ -142,13 +230,14 @@ session_start(); ?>
 
     previewContainer.innerHTML = '';
     selectedFiles.forEach((file, index) => {
-      const ext = file.name.split('.').pop();
+      const ext = extOf(file.name);
       const card = document.createElement('div');
       card.className = 'file-card';
       card.innerHTML = `
         <img src="${getFileIcon(ext)}" alt="${ext}" />
-        <div class="filename" title="${file.name}">${file.name.slice(0, 15)}...</div>
-        <button class="remove-btn" onclick="removeFile(${index})">&times;</button>
+        <div class="filename" title="${file.name}">${file.name.length > 18 ? file.name.slice(0, 15) + '...' : file.name}</div>
+        <div class="small text-muted">${(file.size / (1024*1024)).toFixed(2)} MB</div>
+        <button class="remove-btn" aria-label="Remove" onclick="removeFile(${index})">&times;</button>
       `;
       previewContainer.appendChild(card);
     });
@@ -160,17 +249,18 @@ session_start(); ?>
     previewContainer.appendChild(addCard);
   }
 
-  function removeFile(index) {
+  // expose for inline onclick
+  window.removeFile = function(index) {
     selectedFiles.splice(index, 1);
     renderFilePreview();
   }
 
   function getFileIcon(ext) {
-    switch (ext.toLowerCase()) {
+    switch ((ext || '').toLowerCase()) {
       case 'csv':
         return 'https://cdn-icons-png.flaticon.com/512/9496/9496460.png';
       case 'xls':
-        return 'https://cdn-icons-png.flaticon.com/512/9496/9496456.png'
+        return 'https://cdn-icons-png.flaticon.com/512/9496/9496456.png';
       case 'xlsx':
         return 'https://cdn-icons-png.flaticon.com/512/9496/9496502.png';
       default:
@@ -180,7 +270,7 @@ session_start(); ?>
 </script>
 
 <style>
-  /* File preview styles (same as before) */
+  /* File preview styles */
   .file-preview-row {
     display: flex;
     flex-wrap: wrap;
@@ -192,9 +282,9 @@ session_start(); ?>
     background: #fff;
   }
   .file-card {
-    width: 100px;
-    padding: 15px 10px;
-    background: #e0f3e0;
+    width: 140px;
+    padding: 12px 10px;
+    background: #eaf6ff;
     text-align: center;
     border-radius: 10px;
     position: relative;
@@ -202,7 +292,7 @@ session_start(); ?>
   .file-card img {
     width: 40px;
     height: 40px;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
   }
   .filename {
     font-size: 12px;
@@ -227,8 +317,8 @@ session_start(); ?>
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100px;
-    height: 80px;
+    width: 140px;
+    height: 112px;
     background: #f0f0f0;
     border-radius: 10px;
     border: 2px dashed #ccc;
@@ -252,48 +342,21 @@ session_start(); ?>
     z-index: 9999;
     flex-direction: column;
   }
-  .loader-container {
-    text-align: center;
-    max-width: 400px;
-    width: 100%;
-  }
+  .loader-container { text-align: center; max-width: 400px; width: 100%; }
   .spinner {
-    width: 60px;
-    height: 60px;
-    border: 6px solid #ddd;
-    border-top: 6px solid #007bff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: auto;
+    width: 60px; height: 60px;
+    border: 6px solid #ddd; border-top: 6px solid #007bff;
+    border-radius: 50%; animation: spin 1s linear infinite; margin: auto;
   }
-  .loading-text {
-    margin: 15px 0;
-    font-size: 18px;
-    color: #333;
-    font-weight: 500;
-  }
+  .loading-text { margin: 15px 0; font-size: 18px; color: #333; font-weight: 500; }
   .progress-wrapper {
-    width: 100%;
-    height: 12px;
-    background: #eee;
-    border-radius: 8px;
-    overflow: hidden;
-    margin: 10px 0;
+    width: 100%; height: 12px; background: #eee; border-radius: 8px; overflow: hidden; margin: 10px 0;
   }
   #progressBar {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, #007bff, #00c6ff);
-    transition: width 0.3s ease;
+    height: 100%; width: 0%; background: linear-gradient(90deg, #007bff, #00c6ff); transition: width 0.3s ease;
   }
-  #progressPercent {
-    font-size: 14px;
-    font-weight: 600;
-    color: #007bff;
-  }
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
+  #progressPercent { font-size: 14px; font-weight: 600; color: #007bff; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
 <?php include("./includes/footer.php"); ?>
