@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from rapidfuzz import fuzz
 from typing import List, Dict, Any, Tuple, Optional
 
+sys.stdout.reconfigure(encoding='utf-8')
 # -----------------------
 # Tunable thresholds
 # -----------------------
