@@ -235,22 +235,24 @@ def analyze(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
                 assign_group(i_idx, j_idx)
                 phonetic_pairs.append({"row1_index": i_idx, "row2_index": j_idx})
 
-    # --- Flat table
+    # --- Flat table (with separate name columns)
     table = []
     for p in prepared:
         raw = p["raw"]
-        full_name = " ".join([
-            str(raw.get("first_name") or ""),
-            str(raw.get("middle_name") or ""),
-            str(raw.get("last_name") or ""),
-            str(raw.get("ext_name") or "")
-        ]).strip()
+        first = str(raw.get("first_name") or "").strip()
+        middle = str(raw.get("middle_name") or "").strip()
+        last = str(raw.get("last_name") or "").strip()
+        ext = str(raw.get("ext_name") or "").strip()
+
         table.append({
             "Dup Group": p["dup_group"] or "",
             "Beneficiary ID": raw.get("beneficiary_id"),
             "List ID": raw.get("list_id"),
             "Source File": os.path.basename(p["source_file"]) if p["source_file"] else "",
-            "Full Name": full_name,
+            "First Name": first,
+            "Middle Name": middle,
+            "Last Name": last,
+            "Ext": ext,
             "Birth Date": p["birth_date"],
             "Region": raw.get("region"),
             "Province": raw.get("province"),
@@ -261,7 +263,7 @@ def analyze(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         })
 
     # Group similar records together in the output
-    table.sort(key=lambda r: (r["Dup Group"] or "ZZZ", r["Full Name"]))
+    table.sort(key=lambda r: (r["Dup Group"] or "ZZZ", r["Last Name"], r["First Name"]))
 
     return {
         "exact_duplicates": exact_pairs,

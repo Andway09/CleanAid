@@ -401,13 +401,27 @@ include("./includes/sidebar.php");
           <?php if (empty($allFlagged)): ?>
             <div class="alert-success alert-tight">No issues found 🎉</div>
           <?php else: ?>
-            <div class="table-wrap">
+           <div class="table-wrap">
               <table id="flaggedTable" class="table table-hover table-bordered mb-0">
-                <thead><tr>
-                  <th>Dup Group</th><th>Beneficiary ID</th><th>List ID</th><th>Source File</th>
-                  <th>Full Name</th><th>Birth Date</th><th>Region</th><th>Province</th>
-                  <th>City</th><th>Barangay</th><th>Marital Status</th><th>Reason</th>
-                </tr></thead>
+                <thead>
+                  <tr>
+                    <th>Dup Group</th>
+                    <th>Beneficiary ID</th>
+                    <th>List ID</th>
+                    <th>Source File</th>
+                    <th>First Name</th>
+                    <th>Middle Name</th>
+                    <th>Last Name</th>
+                    <th>Ext</th>
+                    <th>Birth Date</th>
+                    <th>Region</th>
+                    <th>Province</th>
+                    <th>City</th>
+                    <th>Barangay</th>
+                    <th>Marital Status</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
                 <tbody>
                   <?php foreach ($allFlagged as $r): ?>
                   <tr>
@@ -415,7 +429,10 @@ include("./includes/sidebar.php");
                     <td><?= htmlspecialchars($r['Beneficiary ID'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['List ID'] ?? '') ?></td>
                     <td><?= htmlspecialchars(basename($r['Source File'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars($r['Full Name'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['First Name'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['Middle Name'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['Last Name'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['Ext'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Birth Date'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Region'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Province'] ?? '') ?></td>
@@ -428,6 +445,7 @@ include("./includes/sidebar.php");
                 </tbody>
               </table>
             </div>
+
             <button class="btn-export" onclick="exportTableToCSV('flagged_records.csv')">
               ⬇ Download Flagged Records
             </button>
