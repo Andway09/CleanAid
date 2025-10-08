@@ -35,7 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['message'] = 'Passwords do not match.';
         $_SESSION['code'] = 'error';
     } else {
-        // Store password as plain text (NOT RECOMMENDED)
+        // ⚠️ NOTE: Store password as plain text (NOT RECOMMENDED)
+        // ✅ Ideally, use password_hash($new_password, PASSWORD_DEFAULT)
         $update = $conn->prepare("UPDATE user SET password = ?, reset_token = NULL, token_expiry = NULL WHERE user_id = ?");
         $update->bind_param("si", $new_password, $user['user_id']);
         $update->execute();
@@ -88,16 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       font-weight: bold;
       margin-bottom: 15px;
     }
-    .card input {
-      margin-bottom: 10px;
-    }
-    .card a {
-      font-size: 14px;
-      color: #dc3545;
-      text-decoration: none;
-    }
-    .card a:hover {
-      text-decoration: underline;
+    .position-relative i {
+      cursor: pointer;
     }
   </style>
 </head>
@@ -107,16 +100,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <img src="../assets/img/logo.png" alt="CleanAid Logo">
     <h4>Set New Password</h4>
     <form method="POST" novalidate>
-      <input type="password" name="new_password" class="form-control" placeholder="New Password" required>
-      <input type="password" name="confirm_password" class="form-control" placeholder="Confirm Password" required>
+      <!-- New Password -->
+      <div class="mb-3 position-relative">
+        <input type="password" name="new_password" id="new_password" class="form-control" placeholder="New Password" required>
+        <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" id="toggleNewPassword"></i>
+      </div>
+
+      <!-- Confirm Password -->
+      <div class="mb-3 position-relative">
+        <input type="password" name="confirm_password" id="confirm_password" class="form-control" placeholder="Confirm Password" required>
+        <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" id="toggleConfirmPassword"></i>
+      </div>
+
       <div class="d-grid mt-3">
         <button type="submit" class="btn btn-danger">Reset Password</button>
       </div>
     </form>
+
     <div class="mt-3">
       <a href="../login.php"><i class="bi bi-arrow-left"></i> Back to Login</a>
     </div>
   </div>
+
+  <!-- ✅ Show / Hide Password Script -->
+  <script>
+    const toggleNewPassword = document.querySelector('#toggleNewPassword');
+    const newPassword = document.querySelector('#new_password');
+    const toggleConfirmPassword = document.querySelector('#toggleConfirmPassword');
+    const confirmPassword = document.querySelector('#confirm_password');
+
+    toggleNewPassword.addEventListener('click', function () {
+      const type = newPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+      newPassword.setAttribute('type', type);
+      this.classList.toggle('bi-eye');
+      this.classList.toggle('bi-eye-slash');
+    });
+
+    toggleConfirmPassword.addEventListener('click', function () {
+      const type = confirmPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+      confirmPassword.setAttribute('type', type);
+      this.classList.toggle('bi-eye');
+      this.classList.toggle('bi-eye-slash');
+    });
+  </script>
 
   <?php if (isset($_SESSION['message']) && $_SESSION['code']): ?>
   <script>

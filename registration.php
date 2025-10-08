@@ -25,16 +25,18 @@ session_start();
 
 <body class="d-flex align-items-center justify-content-center min-vh-100">
 
-  <div class="d-flex register-card flex-md-row flex-column">
+  <div class="d-flex register-card flex-md-row flex-column shadow rounded overflow-hidden">
     <!-- Left Section -->
-    <div class="left col-md-6 text-center bg-light">
-      <img src="assets/img/logo.png" alt="CleanAid Logo">
+    <div class="left col-md-6 text-center bg-light d-flex align-items-center justify-content-center p-4">
+      <img src="assets/img/logo.png" alt="CleanAid Logo" class="img-fluid" style="max-height: 200px;">
     </div>
 
     <!-- Right Section -->
-    <div class="right col-md-6">
+    <div class="right col-md-6 p-4">
       <h3 class="fw-bold text-center mb-4">Sign up</h3>
       <form action="./controller/registration.php" method="POST" class="needs-validation" novalidate>
+        
+        <!-- Name -->
         <div class="mb-3">
           <input 
             type="text" 
@@ -45,6 +47,8 @@ session_start();
             value="<?php echo isset($_SESSION['old_name']) ? htmlspecialchars($_SESSION['old_name']) : ''; ?>">
           <div class="invalid-feedback">Please enter your full name.</div>
         </div>
+
+        <!-- Email -->
         <div class="mb-3">
           <input 
             type="email" 
@@ -55,29 +59,42 @@ session_start();
             value="<?php echo isset($_SESSION['old_email']) ? htmlspecialchars($_SESSION['old_email']) : ''; ?>">
           <div class="invalid-feedback">Please enter a valid email address.</div>
         </div>
-        <div class="mb-3">
+
+        <!-- Password -->
+        <div class="mb-3 position-relative">
           <input 
             type="password" 
             class="form-control" 
+            id="password" 
             name="password" 
             placeholder="Password" 
             required
             value="<?php echo isset($_SESSION['old_password']) ? htmlspecialchars($_SESSION['old_password']) : ''; ?>">
+          <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" 
+             id="togglePassword" style="cursor: pointer;"></i>
           <div class="invalid-feedback">Please enter your password.</div>
         </div>
-        <div class="mb-3">
+
+        <!-- Confirm Password -->
+        <div class="mb-3 position-relative">
           <input 
             type="password" 
             class="form-control" 
+            id="cpassword" 
             name="cpassword" 
             placeholder="Confirm Password" 
             required
             value="<?php echo isset($_SESSION['old_cpassword']) ? htmlspecialchars($_SESSION['old_cpassword']) : ''; ?>">
+          <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" 
+             id="toggleCPassword" style="cursor: pointer;"></i>
           <div class="invalid-feedback">Please confirm your password.</div>
         </div>
+
+        <!-- Submit -->
         <div class="d-grid">
           <button type="submit" class="btn btn-danger" name="registration">Sign up</button>
         </div>
+
         <p class="text-center mt-3 small">
           Already have an account?
           <a href="./login.php">Login</a>
@@ -89,6 +106,28 @@ session_start();
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- ✅ Show/Hide Password Script -->
+  <script>
+    const togglePassword = document.querySelector('#togglePassword');
+    const password = document.querySelector('#password');
+    const toggleCPassword = document.querySelector('#toggleCPassword');
+    const cpassword = document.querySelector('#cpassword');
+
+    togglePassword.addEventListener('click', function () {
+      const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+      password.setAttribute('type', type);
+      this.classList.toggle('bi-eye');
+      this.classList.toggle('bi-eye-slash');
+    });
+
+    toggleCPassword.addEventListener('click', function () {
+      const type = cpassword.getAttribute('type') === 'password' ? 'text' : 'password';
+      cpassword.setAttribute('type', type);
+      this.classList.toggle('bi-eye');
+      this.classList.toggle('bi-eye-slash');
+    });
+  </script>
 
   <?php if (isset($_SESSION['message']) && $_SESSION['code'] != ''): ?>
     <script>

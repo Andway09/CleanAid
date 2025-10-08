@@ -33,8 +33,9 @@
           <div class="invalid-feedback">Please enter your email address.</div>
         </div>
 
-        <div class="mb-1">
-          <input type="password" class="form-control" name="password" placeholder="Password" required>
+        <div class="mb-1 position-relative">
+          <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
+          <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" id="togglePassword" style="cursor: pointer;"></i>
           <div class="invalid-feedback">Please enter your password.</div>
         </div>
 
@@ -81,5 +82,20 @@
     unset($_SESSION['code']);
   endif;
   ?>
+
+  <script>
+  const togglePassword = document.querySelector('#togglePassword');
+  const password = document.querySelector('#password');
+
+  togglePassword.addEventListener('click', function () {
+    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+    password.setAttribute('type', type);
+    
+    // Toggle icon between eye and eye-slash
+    this.classList.toggle('bi-eye');
+    this.classList.toggle('bi-eye-slash');
+  });
+  </script>
+
 </body>
 </html>
