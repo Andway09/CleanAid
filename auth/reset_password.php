@@ -58,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
   <style>
     body {
       background: url('../assets/img/bg-login.png') no-repeat center center fixed;
@@ -67,30 +68,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       justify-content: center;
       height: 100vh;
       margin: 0;
-      font-family: Arial, sans-serif;
+      font-family: "Poppins", Arial, sans-serif;
     }
+
     .card {
-      padding: 30px;
-      background-color: white;
-      border-radius: 10px;
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-      max-width: 400px;
+      padding: 35px 30px;
+      background-color: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
+      max-width: 380px;
       width: 100%;
       text-align: center;
     }
+
+    /* ✅ Centered logo */
     .card img {
-      width: 80px;
-      margin-bottom: 20px;
       display: block;
-      margin-left: auto;
-      margin-right: auto;
+      margin: 0 auto 20px auto;
+      width: 85px;
     }
+
     .card h4 {
-      font-weight: bold;
-      margin-bottom: 15px;
+      font-weight: 700;
+      color: #222;
+      margin-bottom: 20px;
     }
+
+    .form-control {
+      padding-right: 40px;
+    }
+
     .position-relative i {
       cursor: pointer;
+      color: #888;
+    }
+
+    /* ✅ Password rule note (gray info icon) */
+    .password-note {
+      font-size: 13px;
+      color: #6c757d;
+      text-align: left;
+      margin-top: 6px;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+
+    .password-note i {
+      color: #6c757d; /* gray, not blue */
+      margin-right: 5px;
+    }
+
+    .password-note strong {
+      color: #000;
+    }
+
+    .btn-danger {
+      font-weight: 600;
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .card a {
+      font-size: 14px;
+      color: #0d6efd;
+      text-decoration: none;
+    }
+
+    .card a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -99,16 +144,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="card">
     <img src="../assets/img/logo.png" alt="CleanAid Logo">
     <h4>Set New Password</h4>
+
     <form method="POST" novalidate>
       <!-- New Password -->
-      <div class="mb-3 position-relative">
-        <input type="password" name="new_password" id="new_password" class="form-control" placeholder="New Password" required>
+      <div class="mb-2 position-relative">
+        <input 
+          type="password" 
+          name="new_password" 
+          id="new_password" 
+          class="form-control" 
+          placeholder="New Password" 
+          required
+          pattern="^(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{8,}$"
+          title="Password must be at least 8 characters long, contain an uppercase letter and a number, and no special characters.">
         <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" id="toggleNewPassword"></i>
+      </div>
+
+      <!-- ✅ Password Rule Note -->
+      <div class="password-note">
+        <i class="bi bi-info-circle"></i>
+        Password must be at least <strong>8 characters</strong> long, contain at least one 
+        <strong>uppercase letter</strong> and one <strong>number</strong>, 
+        <span class="text-danger">no special characters allowed.</span>
       </div>
 
       <!-- Confirm Password -->
       <div class="mb-3 position-relative">
-        <input type="password" name="confirm_password" id="confirm_password" class="form-control" placeholder="Confirm Password" required>
+        <input 
+          type="password" 
+          name="confirm_password" 
+          id="confirm_password" 
+          class="form-control" 
+          placeholder="Confirm Password" 
+          required
+          pattern="^(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{8,}$"
+          title="Password must be at least 8 characters long, contain an uppercase letter and a number, and no special characters.">
         <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" id="toggleConfirmPassword"></i>
       </div>
 

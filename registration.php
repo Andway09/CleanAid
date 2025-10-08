@@ -61,7 +61,7 @@ session_start();
         </div>
 
         <!-- Password -->
-        <div class="mb-3 position-relative">
+        <div class="mb-2 position-relative">
           <input 
             type="password" 
             class="form-control" 
@@ -69,11 +69,21 @@ session_start();
             name="password" 
             placeholder="Password" 
             required
+            pattern="^(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{8,}$"
+            title="Password must be at least 8 characters long, contain an uppercase letter and a number, and no special characters."
             value="<?php echo isset($_SESSION['old_password']) ? htmlspecialchars($_SESSION['old_password']) : ''; ?>">
           <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" 
              id="togglePassword" style="cursor: pointer;"></i>
-          <div class="invalid-feedback">Please enter your password.</div>
+          <div class="invalid-feedback">Please enter a valid password.</div>
         </div>
+
+        <!-- ✅ Password Rule Note -->
+        <p class="small text-muted mb-3" style="margin-top: -4px;">
+          <i class="bi bi-info-circle"></i> 
+          Password must be at least <strong>8 characters</strong> long, contain at least one 
+          <strong>uppercase letter</strong> and one <strong>number</strong>, 
+          <span class="text-danger">no special characters allowed</span>.
+        </p>
 
         <!-- Confirm Password -->
         <div class="mb-3 position-relative">
@@ -84,6 +94,8 @@ session_start();
             name="cpassword" 
             placeholder="Confirm Password" 
             required
+            pattern="^(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{8,}$"
+            title="Password must be at least 8 characters long, contain an uppercase letter and a number, and no special characters."
             value="<?php echo isset($_SESSION['old_cpassword']) ? htmlspecialchars($_SESSION['old_cpassword']) : ''; ?>">
           <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3" 
              id="toggleCPassword" style="cursor: pointer;"></i>
