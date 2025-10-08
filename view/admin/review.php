@@ -97,7 +97,6 @@ function run_python_analysis_with_files(array $filePaths): array {
     $python = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? 'python' : 'python3';
     $cmd = "$python $scriptPath " . implode(' ', array_map('escapeshellarg', $filePaths));
 
-
     $spec = [0=>["pipe","r"],1=>["pipe","w"],2=>["pipe","w"]];
     $proc = proc_open($cmd, $spec, $pipes);
     if (!is_resource($proc)) return ["error" => "Failed to start analyzer."];
@@ -108,18 +107,15 @@ function run_python_analysis_with_files(array $filePaths): array {
     $exitCode = proc_close($proc);
 
     if (empty(trim($out))) {
-    return ["error" => "Python returned no output. Check clean_data.py execution or permissions."];
-}
-
+        return ["error" => "Python returned no output. Check clean_data.py execution or permissions."];
+    }
 
     $data = json_decode($out, true);
     if ($exitCode !== 0 || !$data || isset($data['error'])) {
         return ["error" => $data['error'] ?? ("Analysis failed: " . trim($err ?: $out))];
     }
 
-    // accept both flat-table or nested structure
-    if (isset($data['table'])) return $data['table'];
-    return $data;
+    return $data['table'] ?? $data;
 }
 
 /* -----------------------------------------------------------------------
@@ -203,7 +199,6 @@ try {
     error_log("Cleanup warning: " . $e->getMessage());
 }
 
-
 /* -----------------------------------------------------------------------
    7) Compute summary stats
 ------------------------------------------------------------------------ */
@@ -226,45 +221,21 @@ include("./includes/topbar.php");
 include("./includes/sidebar.php");
 ?>
 <style>
-/* --- Layout fixes --- */
-.content-header {
-  display: none !important;
-}
+.content-header { display: none !important; }
 
-/* Ensures the content area doesn't overlap the sidebar */
 .content-wrapper {
-  margin-left: 250px; /* match your sidebar width */
+  margin-left: 250px;
   padding: 20px;
   background: url('../../assets/img/bg-login.png') no-repeat center center fixed;
-  min-height: 100vh;
-  box-sizing: border-box;
   background-size: cover;
-  position: relative;
+  min-height: 100vh;
 }
 
-/* Adjust top spacing if you have a fixed topbar */
-@media (min-width: 992px) {
-  .content-wrapper {
-    margin-top: 60px; /* height of fixed topbar if any */
-  }
-}
+@media (min-width: 992px) { .content-wrapper { margin-top: 60px; } }
+@media (max-width: 991px) { .content-wrapper { margin-left: 0; padding: 15px; } }
 
-/* Responsive behavior for smaller devices */
-@media (max-width: 991px) {
-  .content-wrapper {
-    margin-left: 0;
-    padding: 15px;
-  }
-}
+.review-page { max-width: 1200px; margin: 0 auto; padding: 20px 15px 30px; }
 
-/* --- Review page container --- */
-.review-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px 15px 30px;
-}
-
-/* --- Card styling --- */
 .ca-card {
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -272,11 +243,8 @@ include("./includes/sidebar.php");
   margin-bottom: 20px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.ca-body {
-  padding: 18px;
-}
+.ca-body { padding: 18px; }
 
-/* --- Chips, badges, and summary --- */
 .chip {
   display: inline-block;
   font-size: 0.8rem;
@@ -302,25 +270,29 @@ include("./includes/sidebar.php");
   font-size: 0.75rem;
 }
 
-/* --- Table styling --- */
+/* ✅ Fully Responsive Table - No Horizontal Scroll */
 .table-wrap {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: auto;
-  margin-top: 12px;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
+  word-wrap: break-word;
 }
-.table th,
-.table td {
-  padding: 0.75rem 1rem;
-  font-size: 0.9rem;
-  vertical-align: middle;
-  white-space: nowrap;
+
+.table th, .table td {
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  word-break: break-word;
 }
+
 .table thead th {
   background: #f9fafb;
   position: sticky;
@@ -328,42 +300,24 @@ include("./includes/sidebar.php");
   z-index: 1;
 }
 
-/* --- Alerts --- */
-.alert-tight {
-  padding: 12px;
-  margin: 10px 0;
-  border-radius: 6px;
-}
-.alert-success {
-  background: #d1fae5;
-  color: #065f46;
-}
+.alert-tight { padding: 12px; margin: 10px 0; border-radius: 6px; }
+.alert-success { background: #d1fae5; color: #065f46; }
 
-/* --- Buttons --- */
+/* ✅ Green Download Button */
 .btn-export {
-  background: #2563eb;
+  background: #16a34a;
   color: #fff;
   border: none;
   padding: 10px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
-  margin-top: 12px;
   transition: background 0.2s ease;
 }
-.btn-export:hover {
-  background: #1d4ed8;
-}
+.btn-export:hover { background: #15803d; }
 
-/* --- General utility --- */
-.page-title {
-  font-size: 1.4rem;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: #111827;
-}
+.page-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 10px; color: #111827; }
 </style>
-
 
 <div class="content-wrapper">
   <section class="content">
@@ -394,14 +348,22 @@ include("./includes/sidebar.php");
         </div></div>
 
         <div class="ca-card"><div class="ca-body">
-          <div class="d-flex align-items-center mb-3" style="gap:8px;">
-            <span class="chip">Flagged Records</span><small>All Lists</small>
+          <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap" style="gap:10px;">
+            <div class="d-flex align-items-center" style="gap:8px;">
+              <span class="chip">Flagged Records</span>
+              <small>All Lists</small>
+            </div>
+            <?php if (!empty($allFlagged)): ?>
+              <button class="btn-export" onclick="exportTableToCSV('flagged_records.csv')">
+                ⬇ Download Flagged Records
+              </button>
+            <?php endif; ?>
           </div>
 
           <?php if (empty($allFlagged)): ?>
             <div class="alert-success alert-tight">No issues found 🎉</div>
           <?php else: ?>
-           <div class="table-wrap">
+            <div class="table-wrap">
               <table id="flaggedTable" class="table table-hover table-bordered mb-0">
                 <thead>
                   <tr>
@@ -445,10 +407,6 @@ include("./includes/sidebar.php");
                 </tbody>
               </table>
             </div>
-
-            <button class="btn-export" onclick="exportTableToCSV('flagged_records.csv')">
-              ⬇ Download Flagged Records
-            </button>
           <?php endif; ?>
         </div></div>
       <?php endif; ?>
