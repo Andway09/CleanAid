@@ -156,11 +156,18 @@ function save_flagged_rows_grouped(mysqli $conn, array $flaggedRows): void {
 }
 
 /* -----------------------------------------------------------------------
-   6) Main processing
+   6) Main processing (ensure variables are ALWAYS defined)
 ------------------------------------------------------------------------ */
-$overall = ['total_records'=>0];
+$overall = [
+  'total_records' => 0,
+  'exact_duplicates_count' => 0,
+  'fuzzy_duplicates_count' => 0,
+  'sounds_like_count' => 0,
+];
+
 $allFlagged = [];
 $perList = [];
+
 $tempDir = sys_get_temp_dir() . '/cleanaid_' . uniqid();
 @mkdir($tempDir, 0777, true);
 
@@ -175,18 +182,31 @@ foreach ($lists as $lid) {
     try {
         $csv = write_temp_csv_for_list($rows, $fileName, $tempDir);
         $filePaths[] = $csv;
-        $perList[] = ['list_id'=>$lid,'fileName'=>$fileName,'error'=>null,'summary'=>['total_records'=>count($rows)]];
+        $perList[] = [
+          'list_id'=>$lid,
+          'fileName'=>$fileName,
+          'error'=>null,
+          'summary'=>['total_records'=>count($rows)]
+        ];
     } catch (Throwable $e) {
-        $perList[] = ['list_id'=>$lid,'fileName'=>$fileName,'error'=>$e->getMessage(),'summary'=>['total_records'=>count($rows)]];
+        $perList[] = [
+          'list_id'=>$lid,
+          'fileName'=>$fileName,
+          'error'=>$e->getMessage(),
+          'summary'=>['total_records'=>count($rows)]
+        ];
     }
 }
 
 $data = !empty($filePaths) ? run_python_analysis_with_files($filePaths) : [];
 if (is_array($data) && !isset($data['error'])) {
     $allFlagged = array_values(array_filter($data, fn($r) => !empty($r['Reason'])));
+    // Save to DB (optional)
     save_flagged_rows_grouped($conn, $allFlagged);
 } else {
-    $perList[] = ['list_id'=>0,'fileName'=>'Combined','error'=>$data['error'] ?? 'Analysis failed','summary'=>['total_records'=>0]];
+    if (!empty($filePaths)) { // analysis attempted but failed
+        $perList[] = ['list_id'=>0,'fileName'=>'Combined','error'=>$data['error'] ?? 'Analysis failed','summary'=>['total_records'=>0]];
+    }
 }
 
 // cleanup temp files
@@ -200,12 +220,8 @@ try {
 }
 
 /* -----------------------------------------------------------------------
-   7) Compute summary stats
+   7) Compute summary stats safely
 ------------------------------------------------------------------------ */
-$overall['exact_duplicates_count'] = 0;
-$overall['fuzzy_duplicates_count'] = 0;
-$overall['sounds_like_count'] = 0;
-
 foreach ($allFlagged as $r) {
     $reason = strtolower($r['Reason'] ?? '');
     if (str_contains($reason, 'exact duplicate')) $overall['exact_duplicates_count']++;
@@ -214,156 +230,218 @@ foreach ($allFlagged as $r) {
 }
 
 /* -----------------------------------------------------------------------
-   8) Render Page
+   8) Render Page (UI / Aesthetics)
 ------------------------------------------------------------------------ */
 include("./includes/header.php");
 include("./includes/topbar.php");
 include("./includes/sidebar.php");
 ?>
-<style>
+  <style>
+  /* 🌿 General Layout */
 .content-header { display: none !important; }
 
 .content-wrapper {
   margin-left: 250px;
-  padding: 20px;
+  padding: 0; /* remove default padding */
   background: url('../../assets/img/bg-login.png') no-repeat center center fixed;
   background-size: cover;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-@media (min-width: 992px) { .content-wrapper { margin-top: 60px; } }
-@media (max-width: 991px) { .content-wrapper { margin-left: 0; padding: 15px; } }
+@media (max-width: 991px) { 
+  .content-wrapper { margin-left: 0; padding: 15px; } 
+}
 
-.review-page { max-width: 1200px; margin: 0 auto; padding: 20px 15px 30px; }
+.review-page { 
+  max-width: 1300px; 
+  margin: 0 auto; 
+  padding: 100px 40px 40px; /* ✅ pushes the section down */
+}
 
+/* 🪶 Card Layout */
 .ca-card {
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fff;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  margin-bottom: 25px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+  transition: transform 0.2s ease;
 }
-.ca-body { padding: 18px; }
+.ca-card:hover { transform: translateY(-2px); }
+.ca-body { padding: 20px; }
 
+/* ✨ Header */
+/* ✨ Header */
+.page-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: left; /* ✅ left aligned */
+  margin-top: 20px; /* adds breathing space */
+  margin-bottom: 30px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 6px rgba(255,255,255,0.9);
+}
+
+/* 💠 Chips & Badges */
 .chip {
   display: inline-block;
   font-size: 0.8rem;
-  background: #f3f4f6;
-  color: #374151;
+  background: #e0e7ff;
+  color: #3730a3;
   padding: 5px 10px;
   border-radius: 999px;
-  font-weight: 500;
+  font-weight: 600;
 }
-
-.badge-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
+.badge-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .badge {
-  background: #eef2ff;
-  color: #3730a3;
-  border: 1px solid #c7d2fe;
+  background: #f3f4f6;
+  color: #111827;
+  border: 1px solid #e5e7eb;
   border-radius: 999px;
-  padding: 3px 8px;
-  font-size: 0.75rem;
+  padding: 4px 10px;
+  font-size: 0.8rem;
 }
 
-/* ✅ Fully Responsive Table - No Horizontal Scroll */
+/* 📊 Table Styling — Wider layout */
 .table-wrap {
   width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 10px;
 }
 
 .table {
-  width: 100%;
+  width: 180%; /* ✅ wider to see all columns */
   border-collapse: collapse;
+  font-size: 0.9rem;
   table-layout: auto;
-  word-wrap: break-word;
 }
 
 .table th, .table td {
-  padding: 0.5rem;
-  font-size: 0.85rem;
+  padding: 10px 14px;
   text-align: left;
-  vertical-align: top;
-  white-space: normal;
-  word-break: break-word;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
 }
 
 .table thead th {
-  background: #f9fafb;
+  background: #e0e7ff;
+  color: #1e3a8a;
+  font-weight: 600;
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
-.alert-tight { padding: 12px; margin: 10px 0; border-radius: 6px; }
-.alert-success { background: #d1fae5; color: #065f46; }
+.table tbody tr:hover {
+  background: #f3f4f6;
+  transition: background 0.2s ease;
+}
 
-/* ✅ Green Download Button */
+/* 🎨 Buttons */
 .btn-export {
-  background: #16a34a;
+  background: #2563eb;
   color: #fff;
   border: none;
-  padding: 10px 16px;
-  border-radius: 6px;
+  padding: 9px 14px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 0.85rem;
   transition: background 0.2s ease;
 }
-.btn-export:hover { background: #15803d; }
+.btn-export:hover { background: #1e40af; }
 
-.page-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 10px; color: #111827; }
-</style>
+/* 🎛️ Filter Buttons */
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.filter-btn {
+  padding: 6px 14px;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #3730a3;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.filter-btn:hover { background: #c7d2fe; }
+.filter-btn.active {
+  background: #3730a3;
+  color: #fff;
+  border-color: #3730a3;
+}
+
+.alert-tight { padding: 12px; margin: 10px 0; border-radius: 6px; }
+.alert-success { background: #dcfce7; color: #166534; font-weight: 500; }
+
+  </style>
 
 <div class="content-wrapper">
   <section class="content">
     <div class="container-fluid review-page">
-      <div class="page-title fw-bold mb-3">Review Summary</div>
+      <div class="page-title">Review Summary</div>
 
       <?php if (empty($lists)): ?>
         <div class="ca-card"><div class="ca-body">No uploaded lists found or cleaning not yet run.</div></div>
       <?php else: ?>
         <div class="ca-card"><div class="ca-body">
-          <div class="d-flex align-items-center mb-2" style="gap:8px;">
+          <div class="d-flex align-items-center mb-3" style="gap:8px;">
             <span class="chip">Summary</span>
             <small>Across <?= count($lists) ?> list(s)</small>
           </div>
-          <ul class="mb-2">
-            <li><strong>Total Records:</strong> <?= (int)$overall['total_records'] ?></li>
-            <li><strong>Exact Duplicates:</strong> <?= (int)$overall['exact_duplicates_count'] ?></li>
-            <li><strong>Possible Duplicates:</strong> <?= (int)$overall['fuzzy_duplicates_count'] ?></li>
-            <li><strong>Sounds-Like Duplicates:</strong> <?= (int)$overall['sounds_like_count'] ?></li>
+          <ul class="mb-3" style="line-height:1.6;">
+            <li><strong>Total Records:</strong> <?= (int)($overall['total_records'] ?? 0) ?></li>
+            <li><strong>Exact Duplicates:</strong> <?= (int)($overall['exact_duplicates_count'] ?? 0) ?></li>
+            <li><strong>Possible Duplicates:</strong> <?= (int)($overall['fuzzy_duplicates_count'] ?? 0) ?></li>
+            <li><strong>Sounds-Like Duplicates:</strong> <?= (int)($overall['sounds_like_count'] ?? 0) ?></li>
           </ul>
           <div class="badge-list">
-            <?php foreach ($perList as $pl): ?>
-              <span class="badge" title="List ID: <?= (int)$pl['list_id'] ?>">
-                <?= htmlspecialchars($pl['fileName']) ?><?= !empty($pl['error']) ? ' — error' : '' ?>
+            <?php foreach (($perList ?? []) as $pl): ?>
+              <span class="badge" title="List ID: <?= (int)($pl['list_id'] ?? 0) ?>">
+                <?= htmlspecialchars($pl['fileName'] ?? 'Unknown') ?><?= !empty($pl['error']) ? ' — error' : '' ?>
               </span>
             <?php endforeach; ?>
           </div>
         </div></div>
 
         <div class="ca-card"><div class="ca-body">
-          <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap" style="gap:10px;">
+          <div class="d-flex flex-wrap align-items-center justify-content-between mb-3" style="gap:10px;">
             <div class="d-flex align-items-center" style="gap:8px;">
               <span class="chip">Flagged Records</span>
               <small>All Lists</small>
             </div>
+
             <?php if (!empty($allFlagged)): ?>
               <button class="btn-export" onclick="exportTableToCSV('flagged_records.csv')">
-                ⬇ Download Flagged Records
+                Download Flagged Records
               </button>
             <?php endif; ?>
           </div>
 
+          <!-- 🌈 Filter Buttons -->
+          <div class="filter-group">
+            <button class="filter-btn active" data-filter="all" onclick="applyFilter(this)">All</button>
+            <button class="filter-btn" data-filter="exact" onclick="applyFilter(this)">Exact Duplicate</button>
+            <button class="filter-btn" data-filter="possible" onclick="applyFilter(this)">Possible Duplicate</button>
+            <button class="filter-btn" data-filter="sounds" onclick="applyFilter(this)">Sounds-like Duplicate</button>
+            <button class="filter-btn" data-filter="missing" onclick="applyFilter(this)">Missing Data</button>
+          </div>
+
           <?php if (empty($allFlagged)): ?>
-            <div class="alert-success alert-tight">No issues found 🎉</div>
+            <div class="alert-success alert-tight mt-3">No issues found 🎉</div>
           <?php else: ?>
-            <div class="table-wrap">
+            <div class="table-wrap mt-3">
               <table id="flaggedTable" class="table table-hover table-bordered mb-0">
                 <thead>
                   <tr>
@@ -385,7 +463,7 @@ include("./includes/sidebar.php");
                   </tr>
                 </thead>
                 <tbody>
-                  <?php foreach ($allFlagged as $r): ?>
+                  <?php foreach (($allFlagged ?? []) as $r): ?>
                   <tr>
                     <td><?= htmlspecialchars($r['Dup Group'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Beneficiary ID'] ?? '') ?></td>
@@ -416,24 +494,44 @@ include("./includes/sidebar.php");
 
 <script>
 function downloadCSV(csv, filename) {
-  const blob = new Blob([csv], {type: "text/csv"});
+  const blob = new Blob([csv], { type: "text/csv" });
   const link = document.createElement("a");
   link.download = filename;
   link.href = URL.createObjectURL(blob);
-  link.style.display = "none";
-  document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
 }
 
 function exportTableToCSV(filename) {
   const rows = document.querySelectorAll("#flaggedTable tr");
-  if (!rows.length) { alert("No flagged records to export."); return; }
+  if (!rows.length) return alert("No flagged records to export.");
   const csv = Array.from(rows).map(r =>
     Array.from(r.querySelectorAll("td,th"))
-      .map(td => `"${td.innerText.replace(/"/g,'""')}"`).join(",")
+      .map(td => `"${td.innerText.replace(/"/g,'""')}"`)
+      .join(",")
   ).join("\n");
   downloadCSV(csv, filename);
+}
+
+function applyFilter(button) {
+  document.querySelectorAll(".filter-btn").forEach(btn => btn.classList.remove("active"));
+  button.classList.add("active");
+
+  const filter = button.dataset.filter;
+  const rows = document.querySelectorAll("#flaggedTable tbody tr");
+
+  rows.forEach(row => {
+    const reasonCell = row.querySelector("td:last-child");
+    const reason = reasonCell ? reasonCell.textContent.toLowerCase() : "";
+    let show = false;
+
+    if (filter === "all") show = true;
+    else if (filter === "exact" && reason.includes("exact duplicate")) show = true;
+    else if (filter === "possible" && reason.includes("possible duplicate")) show = true;
+    else if (filter === "sounds" && reason.includes("sounds-like duplicate")) show = true;
+    else if (filter === "missing" && reason.includes("missing")) show = true;
+
+    row.style.display = show ? "" : "none";
+  });
 }
 </script>
 
