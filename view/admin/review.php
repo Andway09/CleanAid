@@ -200,7 +200,11 @@ foreach ($lists as $lid) {
 
 $data = !empty($filePaths) ? run_python_analysis_with_files($filePaths) : [];
 if (is_array($data) && !isset($data['error'])) {
-    $allFlagged = array_values(array_filter($data, fn($r) => !empty($r['Reason'])));
+    $allFlagged = array_values(array_filter($data, function($r) {
+    // include any row that seems flagged (has Reason or Dup Group)
+    return isset($r['Reason']) || isset($r['Dup Group']);
+}));
+
     // Save to DB (optional)
     save_flagged_rows_grouped($conn, $allFlagged);
 } else {
@@ -229,6 +233,14 @@ foreach ($allFlagged as $r) {
     if (str_contains($reason, 'sounds-like duplicate')) $overall['sounds_like_count']++;
 }
 
+// ✅ Save summary for Dashboard
+$_SESSION['latest_summary'] = [
+  'total_flagged'       => count($allFlagged ?? []),
+  'exact_duplicates'    => $overall['exact_duplicates_count'] ?? 0,
+  'possible_duplicates' => $overall['fuzzy_duplicates_count'] ?? 0,
+  'sounds_like'         => $overall['sounds_like_count'] ?? 0
+];
+
 /* -----------------------------------------------------------------------
    8) Render Page (UI / Aesthetics)
 ------------------------------------------------------------------------ */
@@ -236,54 +248,63 @@ include("./includes/header.php");
 include("./includes/topbar.php");
 include("./includes/sidebar.php");
 ?>
-  <style>
-  /* 🌿 General Layout */
+<style>
+/* 🌿 General Layout */
 .content-header { display: none !important; }
 
 .content-wrapper {
-  margin-left: 250px;
-  padding: 0; /* remove default padding */
+  margin-left: 250px; /* stays beside sidebar */
+  padding: 0;
   background: url('../../assets/img/bg-login.png') no-repeat center center fixed;
   background-size: cover;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
 }
 
-@media (max-width: 991px) { 
-  .content-wrapper { margin-left: 0; padding: 15px; } 
+@media (max-width: 991px) {
+  .content-wrapper { margin-left: 0; padding: 15px; }
 }
 
-.review-page { 
-  max-width: 1300px; 
-  margin: 0 auto; 
-  padding: 100px 40px 40px; /* ✅ pushes the section down */
+/* 🧭 Review Page Container */
+.review-page {
+  max-width: 1200px;
+  margin-left: 40px; /* keep it aligned left */
+  padding: 100px 40px 40px;
 }
 
-/* 🪶 Card Layout */
-.ca-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #fff;
-  margin-bottom: 25px;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.06);
-  transition: transform 0.2s ease;
-}
-.ca-card:hover { transform: translateY(-2px); }
-.ca-body { padding: 20px; }
-
-/* ✨ Header */
-/* ✨ Header */
+/* 🏷️ Page Title */
 .page-title {
   font-size: 2rem;
   font-weight: 700;
   color: #1e293b;
-  text-align: left; /* ✅ left aligned */
-  margin-top: 20px; /* adds breathing space */
+  text-align: left;
+  margin-top: 10px;
   margin-bottom: 30px;
   letter-spacing: 0.5px;
   text-shadow: 0 2px 6px rgba(255,255,255,0.9);
+}
+
+/* 📦 White Card */
+.ca-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+  margin-bottom: 25px;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+.ca-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.ca-body { padding: 25px 30px; }
+
+/* ⚠️ Empty Message */
+.empty-message {
+  color: #664D03;
+  background: #fff3cd;
+  padding: 18px 20px;
+  border-radius: 8px;
+  border: 1px solid #f3f4f6;
+  text-align: left; /* keep text left */
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.03);
 }
 
 /* 💠 Chips & Badges */
@@ -306,18 +327,18 @@ include("./includes/sidebar.php");
   font-size: 0.8rem;
 }
 
-/* 📊 Table Styling — Wider layout */
+/* 📊 Table Styling */
 .table-wrap {
   width: 100%;
   overflow-x: auto;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.97);
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 10px;
 }
 
 .table {
-  width: 180%; /* ✅ wider to see all columns */
+  width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
   table-layout: auto;
@@ -381,11 +402,9 @@ include("./includes/sidebar.php");
   color: #fff;
   border-color: #3730a3;
 }
+</style>
 
-.alert-tight { padding: 12px; margin: 10px 0; border-radius: 6px; }
-.alert-success { background: #dcfce7; color: #166534; font-weight: 500; }
 
-  </style>
 
 <div class="content-wrapper">
   <section class="content">
@@ -393,8 +412,16 @@ include("./includes/sidebar.php");
       <div class="page-title">Review Summary</div>
 
       <?php if (empty($lists)): ?>
-        <div class="ca-card"><div class="ca-body">No uploaded lists found or cleaning not yet run.</div></div>
-      <?php else: ?>
+  <div class="ca-card">
+    <div class="ca-body">
+      <div class="empty-message">
+        No uploaded lists found or cleaning not yet run.
+      </div>
+    </div>
+  </div>
+<?php else: ?>
+
+
         <div class="ca-card"><div class="ca-body">
           <div class="d-flex align-items-center mb-3" style="gap:8px;">
             <span class="chip">Summary</span>

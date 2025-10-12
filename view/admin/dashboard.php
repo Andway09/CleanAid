@@ -93,60 +93,23 @@
     <div class="card-body">
       <h5 class="card-title">Cleansing Summary</h5>
       <?php
-      // 1) Detect the correct "reason" column in duplicaterecord
-      $reasonCol = null;
-      $cRes = $conn->query("SHOW COLUMNS FROM duplicaterecord");
-      if ($cRes) {
-        while ($col = $cRes->fetch_assoc()) {
-          $fname = strtolower($col['Field']);
-          // common possibilities
-          if (in_array($fname, ['flagged_reason','reason','flag_reason','remarks','note'])) {
-            $reasonCol = $col['Field']; // preserve exact casing
-            break;
-          }
-        }
-        $cRes->free();
-      }
+      $summary = $_SESSION['latest_summary'] ?? null;
 
-      if (!$reasonCol) {
-        // Fail fast with a clear message so you can check your schema.
-        echo "<p class='text-danger mb-0'>Could not find a reason column in <code>duplicaterecord</code>. 
-              Expected one of: <code>flagged_reason</code>, <code>reason</code>, <code>flag_reason</code>, <code>remarks</code>, <code>note</code>.</p>";
-      } else {
-        // 2) Build summary with flexible, case-insensitive matching
-        $sql = "
-          SELECT
-            COUNT(*) AS total_issues,
-            SUM(CASE WHEN LOWER($reasonCol) LIKE 'exact duplicate%' THEN 1 ELSE 0 END)      AS exact_cnt,
-            SUM(CASE WHEN LOWER($reasonCol) LIKE 'possible duplicate%' THEN 1 ELSE 0 END)   AS possible_cnt,
-            SUM(CASE 
-                  WHEN LOWER($reasonCol) LIKE 'sounds-like%' 
-                    OR LOWER($reasonCol) LIKE 'sounds like%' 
-                    OR LOWER($reasonCol) LIKE 'phonetic%' 
-                    OR LOWER($reasonCol) LIKE '%sound%like%' 
-                  THEN 1 ELSE 0 END
-            ) AS sound_cnt
-          FROM duplicaterecord
-        ";
-        $summaryQuery = $conn->query($sql);
-
-        if ($summaryQuery && $summary = $summaryQuery->fetch_assoc()):
+      if ($summary):
       ?>
-          <ul class="mb-0">
-            <li><strong>Total Flagged Records:</strong> <?= (int)$summary['total_issues'] ?></li>
-            <li><strong>Exact Duplicates:</strong> <?= (int)$summary['exact_cnt'] ?></li>
-            <li><strong>Possible Duplicates:</strong> <?= (int)$summary['possible_cnt'] ?></li>
-            <li><strong>Sounds-Like Duplicates:</strong> <?= (int)$summary['sound_cnt'] ?></li>
-          </ul>
-      <?php
-        else:
-          echo "<p class='text-muted mb-0'>No cleansing data available yet.</p>";
-        endif;
-      }
-      ?>
+        <ul class="mb-0">
+          <li><strong>Total Flagged Records:</strong> <?= (int)$summary['total_flagged'] ?></li>
+          <li><strong>Exact Duplicates:</strong> <?= (int)$summary['exact_duplicates'] ?></li>
+          <li><strong>Possible Duplicates:</strong> <?= (int)$summary['possible_duplicates'] ?></li>
+          <li><strong>Sounds-Like Duplicates:</strong> <?= (int)$summary['sounds_like'] ?></li>
+        </ul>
+      <?php else: ?>
+        <p class="text-muted mb-0">No recent summary available. Run data cleaning first.</p>
+      <?php endif; ?>
     </div>
   </div>
 </div>
+
 
 
         </div>
