@@ -184,7 +184,8 @@ try {
     fclose($csvHandle);
 
     // ===== CONVERT TO PARQUET =====
-    $python = '"C:\\Users\\tiemp\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"';
+    $python = '"' . realpath(__DIR__ . '/../.venv/Scripts/python.exe') . '"';
+
     $converter = realpath(__DIR__ . '/../scripts/convert_to_parquet.py');
     chdir(dirname($converter));
 
