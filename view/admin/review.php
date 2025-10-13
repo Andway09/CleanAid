@@ -200,10 +200,7 @@ foreach ($lists as $lid) {
 
 $data = !empty($filePaths) ? run_python_analysis_with_files($filePaths) : [];
 if (is_array($data) && !isset($data['error'])) {
-    $allFlagged = array_values(array_filter($data, function($r) {
-    // include any row that seems flagged (has Reason or Dup Group)
-    return isset($r['Reason']) || isset($r['Dup Group']);
-}));
+    $allFlagged = array_values(array_filter($data, fn($r) => !empty($r['Reason'])));
 
     // Save to DB (optional)
     save_flagged_rows_grouped($conn, $allFlagged);
