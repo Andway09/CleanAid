@@ -20,7 +20,7 @@
     </li>
     <li class="nav-item">
       <a href="clean.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'clean.php' ? 'active' : '' ?>">
-        <i class="bi bi-brush me-2"></i> Clean Data
+        <i class="bi bi-upc-scan me-2"></i> Scan Data
       </a>
     </li>
     <li class="nav-item">
