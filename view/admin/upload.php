@@ -209,20 +209,9 @@ include("./includes/sidebar.php");
 
     xhr.open('POST', '../../controller/upload_process.php', true);
     xhr.setRequestHeader('X-CSRF-Token', csrfToken); // double submit pattern
-    xhr.send(formData);
-  });
-
-  // ===== Render preview =====
-  function renderFilePreview() {
-    const dt = new DataTransfer();
-    selectedFiles.forEach(file => dt.items.add(file));
-    fileInput.files = dt.files;
-
-    uploadBtn.disabled = selectedFiles.length === 0;
-
-    if (selectedFiles.length > 0) {
-      dropZone.style.display = 'none';
-      previewContainer.style.display = 'flex';
+ue);
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+tainer.style.display = 'flex';
     } else {
       dropZone.style.display = 'block';
       previewContainer.style.display = 'none';
