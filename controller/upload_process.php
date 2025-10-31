@@ -6,6 +6,15 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Allow browser to start receiving response as we process
+@ob_end_clean();
+header('X-Accel-Buffering: no'); // for nginx
+@ini_set('output_buffering', 'off');
+@ini_set('zlib.output_compression', '0');
+echo str_pad('', 4096) . "\n"; // trigger flush
+@flush();
+
+
 try {
     if (!isset($_SESSION['user_id'])) {
         throw new RuntimeException('Unauthorized. Please sign in.');
