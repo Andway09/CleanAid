@@ -129,7 +129,7 @@
 
     xhr.upload.addEventListener('progress', e => {
       if (e.lengthComputable) {
-        let percent = Math.round((e.loaded / e.total) * 90); // cap at 90% until backend finishes
+        let percent = Math.round((e.loaded / e.total) * 50); // cap at 90% until backend finishes
         progressBar.style.width = percent + '%';
         progressPercent.innerText = percent + '%';
       }
