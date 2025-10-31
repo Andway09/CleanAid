@@ -60,7 +60,7 @@ if (!empty($currentLists)) {
 <main class="main bg-body-tertiary" style="min-height: 100vh;">
   <section class="container py-5">
     <h2 class="fw-bold">Scan Data</h2>
-    <p class="text-muted">Run data cleansing to detect duplicates and inconsistencies in your uploaded data.</p>
+    <p class="text-muted">Run data scanning to detect duplicates and inconsistencies in your uploaded data.</p>
 
     <div class="card shadow-sm border-0 rounded-4 p-4 mb-4 w-100">
       <h5 class="fw-semibold mb-3">Uploaded Parquet Files</h5>
@@ -87,7 +87,7 @@ if (!empty($currentLists)) {
 
         <div class="text-center mt-4">
           <button type="button" class="btn btn-success px-4 rounded-pill" onclick="startCleaning()">
-            Start Cleaning
+            Start Scanning
           </button>
         </div>
 
@@ -173,7 +173,7 @@ function startCleaning() {
         messageText.innerText = data.message;
       }
       if (data.complete) {
-        messageText.innerText = '✅ Cleaning complete! Redirecting...';
+        messageText.innerText = '✅ Scanning complete! Redirecting...';
         bar.style.width = '100%';
         percentText.innerText = '100%';
         setTimeout(() => {
