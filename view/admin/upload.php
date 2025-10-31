@@ -58,9 +58,9 @@ include("./includes/sidebar.php");
 
 <script>
   // ===== Config =====
-  const MAX_PER_FILE_MB = 50;                     // server limit mirrors this
-  const MAX_FILES = 20;                           // arbitrary reasonable cap
-  const ALLOWED_EXTS = ['csv','xls','xlsx'];      // UI filter
+  const MAX_PER_FILE_MB = 50;                     
+  const MAX_FILES = 20;                           
+  const ALLOWED_EXTS = ['csv','xls','xlsx'];      
   const BYTES_PER_MB = 1024 * 1024;
 
   // ===== Elements =====
@@ -150,11 +150,10 @@ include("./includes/sidebar.php");
       return;
     }
 
-    // Final client validation before sending
     const errors = validateFiles(selectedFiles);
     if (errors.length) return showErrors(errors);
 
-    // Show loading overlay
+    // Show overlay
     loadingOverlay.style.display = 'flex';
     progressBar.style.width = '0%';
     progressPercent.innerText = '0%';
@@ -166,40 +165,51 @@ include("./includes/sidebar.php");
 
     const xhr = new XMLHttpRequest();
 
+    // --- Realistic progress ---
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable) {
-        const percent = Math.round((e.loaded / e.total) * 100);
+        // Cap at 99% to reserve last part for server processing
+        const percent = Math.min(Math.round((e.loaded / e.total) * 100), 99);
         progressBar.style.width = percent + "%";
         progressPercent.innerText = percent + "%";
       }
     });
 
+    xhr.onloadstart = function() {
+      loadingText.innerText = 'Uploading...';
+    };
+
     xhr.onload = function () {
-      try {
-        const resp = JSON.parse(xhr.responseText || '{}');
-        if (xhr.status === 200 && resp.ok) {
-          loadingText.innerText = "✅ Upload complete! Redirecting...";
-          setTimeout(() => {
-            // server set session messages; redirect target provided
-            window.location.href = resp.redirect || "../admin/clean.php";
-          }, 800);
-        } else {
-          const msg = resp.error || "Upload failed.";
-          alert("❌ " + msg);
-          loadingOverlay.style.display = 'none';
+      // Simulate server processing visually
+      loadingText.innerText = 'Processing on server...';
+      progressBar.style.width = '100%';
+      progressPercent.innerText = '100%';
+
+      setTimeout(() => {
+        try {
+          const resp = JSON.parse(xhr.responseText || '{}');
+          if (xhr.status === 200 && resp.ok) {
+            loadingText.innerText = "✅ Upload complete! Redirecting...";
+            setTimeout(() => {
+              window.location.href = resp.redirect || "../admin/clean.php";
+            }, 800);
+          } else {
+            const msg = resp.error || "Upload failed.";
+            alert("❌ " + msg);
+            loadingOverlay.style.display = 'none';
+          }
+        } catch (_e) {
+          if (xhr.status === 200) {
+            loadingText.innerText = "✅ Upload complete! Redirecting...";
+            setTimeout(() => {
+              window.location.href = "../admin/clean.php";
+            }, 800);
+          } else {
+            alert("❌ Upload failed.");
+            loadingOverlay.style.display = 'none';
+          }
         }
-      } catch (_e) {
-        // Fallback if non-JSON (should not happen)
-        if (xhr.status === 200) {
-          loadingText.innerText = "✅ Upload complete! Redirecting...";
-          setTimeout(() => {
-            window.location.href = "../admin/clean.php";
-          }, 800);
-        } else {
-          alert("❌ Upload failed.");
-          loadingOverlay.style.display = 'none';
-        }
-      }
+      }, 500); // small delay for smooth UX
     };
 
     xhr.onerror = function () {
@@ -207,15 +217,26 @@ include("./includes/sidebar.php");
       loadingOverlay.style.display = 'none';
     };
 
-    xhr.open('POST', '../../controller/upload_process.php', true);
-    xhr.setRequestHeader('X-CSRF-Token', csrfToken); // double submit pattern
-ue);
-    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
-tainer.style.display = 'flex';
-    } else {
-      dropZone.style.display = 'block';
-      previewContainer.style.display = 'none';
-    }
+xhr.open('POST', '../../controller/upload_process.php', true);
+xhr.setRequestHeader('X-CSRF-Token', csrfToken); // double submit pattern
+xhr.send(formData);
+  });
+
+  // ===== Render preview =====
+  function renderFilePreview() {
+    const dt = new DataTransfer();
+    selectedFiles.forEach(file => dt.items.add(file));
+    fileInput.files = dt.files;
+
+    uploadBtn.disabled = selectedFiles.length === 0;
+
+if (selectedFiles.length > 0) {
+  dropZone.style.display = 'none';
+  previewContainer.style.display = 'flex';
+} else {
+  dropZone.style.display = 'block';
+  previewContainer.style.display = 'none';
+}
 
     previewContainer.innerHTML = '';
     selectedFiles.forEach((file, index) => {

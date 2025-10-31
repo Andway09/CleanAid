@@ -8,7 +8,49 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $userId = (int)$_SESSION['user_id'];
-$currentLists = $_SESSION['uploaded_lists'] ?? []; // IDs of the most recent upload batch
+$currentLists = $_SESSION['uploaded_lists'] ?? [];
+
+// 🧩 Step 1: Fallback - if no session list IDs, load the most recent upload for this user
+if (empty($currentLists)) {
+  $stmtLast = $conn->prepare("
+    SELECT list_id
+    FROM beneficiarylist
+    WHERE user_id = ?
+    ORDER BY date_submitted DESC
+    LIMIT 1
+  ");
+  $stmtLast->bind_param('i', $userId);
+  $stmtLast->execute();
+  $resLast = $stmtLast->get_result();
+  if ($resLast && $resLast->num_rows > 0) {
+    $row = $resLast->fetch_assoc();
+    $currentLists = [(int)$row['list_id']];
+    $_SESSION['uploaded_lists'] = $currentLists; // keep it stored for next refresh
+  }
+}
+
+// 🧩 Step 2: Query the parquet files
+$parquetFiles = [];
+if (!empty($currentLists)) {
+  $placeholders = implode(',', array_fill(0, count($currentLists), '?'));
+  $query = "
+    SELECT pf.file_name, bl.date_submitted
+    FROM parquet_files pf
+    INNER JOIN beneficiarylist bl ON pf.list_id = bl.list_id
+    WHERE pf.list_id IN ($placeholders)
+    ORDER BY pf.id DESC
+  ";
+
+  $stmt = $conn->prepare($query);
+  $types = str_repeat('i', count($currentLists));
+  $stmt->bind_param($types, ...$currentLists);
+  $stmt->execute();
+  $result = $stmt->get_result();
+
+  while ($row = $result->fetch_assoc()) {
+    $parquetFiles[] = $row;
+  }
+}
 ?>
 
 <?php include("./includes/header.php"); ?>
@@ -23,59 +65,37 @@ $currentLists = $_SESSION['uploaded_lists'] ?? []; // IDs of the most recent upl
     <div class="card shadow-sm border-0 rounded-4 p-4 mb-4 w-100">
       <h5 class="fw-semibold mb-3">Uploaded Parquet Files</h5>
 
-      <?php
-      if (!empty($currentLists)) {
-          // ✅ Display only the files uploaded in this current batch
-          $placeholders = implode(',', array_fill(0, count($currentLists), '?'));
-          $query = "
-            SELECT pf.file_name, bl.date_submitted
-            FROM parquet_files pf
-            INNER JOIN beneficiarylist bl ON pf.list_id = bl.list_id
-            WHERE pf.list_id IN ($placeholders)
-            ORDER BY pf.id DESC
-          ";
+      <?php if (!empty($parquetFiles)): ?>
+        <ul class="list-group list-group-flush mb-3">
+          <?php foreach ($parquetFiles as $row): ?>
+            <li class="list-group-item d-flex align-items-center">
+              <img src="https://cdn-icons-png.flaticon.com/512/4725/4725976.png"
+                   alt="parquet icon" width="24" class="me-2">
+              <div>
+                <strong><?= htmlspecialchars($row['file_name']) ?></strong><br>
+                <small class="text-muted">
+                  Uploaded: <?= htmlspecialchars($row['date_submitted']) ?>
+                </small>
+              </div>
+            </li>
+          <?php endforeach; ?>
+        </ul>
 
-          $stmt = $conn->prepare($query);
-          $types = str_repeat('i', count($currentLists));
-          $stmt->bind_param($types, ...$currentLists);
-          $stmt->execute();
-          $result = $stmt->get_result();
-
-          if ($result->num_rows > 0): ?>
-            <ul class="list-group list-group-flush mb-3">
-              <?php while ($row = $result->fetch_assoc()): ?>
-                <li class="list-group-item d-flex align-items-center">
-                  <img src="https://cdn-icons-png.flaticon.com/512/4725/4725976.png"
-                       alt="parquet icon" width="24" class="me-2">
-                  <div>
-                    <strong><?= htmlspecialchars($row['file_name']) ?></strong><br>
-                    <small class="text-muted">
-                      Uploaded: <?= htmlspecialchars($row['date_submitted']) ?>
-                    </small>
-                  </div>
-                </li>
-              <?php endwhile; ?>
-            </ul>
-
-            <div class="text-muted small">
-              These Parquet files will be scanned for duplicate entries.
-            </div>
-
-            <div class="text-center mt-4">
-              <button type="button" class="btn btn-success px-4 rounded-pill" onclick="startCleaning()">
-                Start Scanning
-              </button>
-            </div>
-          <?php else: ?>
-            <div class="alert alert-warning mb-0">
-              No Parquet files found in this upload batch.
-            </div>
-          <?php endif; ?>
-      <?php } else { ?>
-        <div class="alert alert-warning mb-0">
-          No uploaded files found. Please upload CSV/XLSX first.
+<div class="text-muted small">
+  These Parquet files will be scanned for duplicate entries.
         </div>
-      <?php } ?>
+
+        <div class="text-center mt-4">
+          <button type="button" class="btn btn-success px-4 rounded-pill" onclick="startCleaning()">
+            Start Cleaning
+          </button>
+        </div>
+
+      <?php else: ?>
+        <div class="alert alert-warning mb-0">
+          No Parquet files found. Please upload CSV/XLSX first.
+        </div>
+      <?php endif; ?>
     </div>
   </section>
 </main>
@@ -104,55 +124,23 @@ $currentLists = $_SESSION['uploaded_lists'] ?? []; // IDs of the most recent upl
   z-index: 9999;
   flex-direction: column;
 }
-
-.loader-container {
-  text-align: center;
-  max-width: 400px;
-  width: 100%;
-}
-
+.loader-container { text-align: center; max-width: 400px; width: 100%; }
 .spinner {
-  width: 60px;
-  height: 60px;
-  border: 6px solid #ddd;
-  border-top: 6px solid #198754;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: auto;
+  width: 60px; height: 60px;
+  border: 6px solid #ddd; border-top: 6px solid #198754;
+  border-radius: 50%; animation: spin 1s linear infinite; margin: auto;
 }
-
-.loading-text {
-  margin: 15px 0;
-  font-size: 18px;
-  color: #333;
-  font-weight: 500;
-}
-
+.loading-text { margin: 15px 0; font-size: 18px; color: #333; font-weight: 500; }
 .progress-wrapper {
-  width: 100%;
-  height: 12px;
-  background: #eee;
-  border-radius: 8px;
-  overflow: hidden;
-  margin: 10px 0;
+  width: 100%; height: 12px; background: #eee; border-radius: 8px;
+  overflow: hidden; margin: 10px 0;
 }
-
 #cleanProgressBar {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #198754, #6bdc8e);
+  height: 100%; width: 0%; background: linear-gradient(90deg, #198754, #6bdc8e);
   transition: width 0.3s ease;
 }
-
-#cleanProgressPercent {
-  font-size: 14px;
-  font-weight: 600;
-  color: #198754;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+#cleanProgressPercent { font-size: 14px; font-weight: 600; color: #198754; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
 <script>
@@ -177,16 +165,13 @@ function startCleaning() {
         source.close();
         return;
       }
-
       if (data.progress !== undefined) {
         bar.style.width = data.progress + '%';
         percentText.innerText = data.progress + '%';
       }
-
       if (data.message) {
         messageText.innerText = data.message;
       }
-
       if (data.complete) {
         messageText.innerText = '✅ Cleaning complete! Redirecting...';
         bar.style.width = '100%';
