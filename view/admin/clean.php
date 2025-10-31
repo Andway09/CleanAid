@@ -17,7 +17,7 @@ $currentLists = $_SESSION['uploaded_lists'] ?? []; // IDs of the most recent upl
 
 <main class="main bg-body-tertiary" style="min-height: 100vh;">
   <section class="container py-5">
-    <h2 class="fw-bold">Clean Data</h2>
+    <h2 class="fw-bold">Scan Data</h2>
     <p class="text-muted">Run data cleansing to detect duplicates and inconsistencies in your uploaded data.</p>
 
     <div class="card shadow-sm border-0 rounded-4 p-4 mb-4 w-100">
@@ -63,7 +63,7 @@ $currentLists = $_SESSION['uploaded_lists'] ?? []; // IDs of the most recent upl
 
             <div class="text-center mt-4">
               <button type="button" class="btn btn-success px-4 rounded-pill" onclick="startCleaning()">
-                Start Cleaning
+                Start Scanning
               </button>
             </div>
           <?php else: ?>
@@ -84,7 +84,7 @@ $currentLists = $_SESSION['uploaded_lists'] ?? []; // IDs of the most recent upl
 <div id="cleaningOverlay">
   <div class="loader-container">
     <div class="spinner"></div>
-    <p class="loading-text">Starting cleaning...</p>
+    <p class="loading-text">Starting scanning...</p>
     <div class="progress-wrapper">
       <div id="cleanProgressBar"></div>
     </div>
