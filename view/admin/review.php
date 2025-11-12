@@ -317,7 +317,7 @@ include("./includes/sidebar.php");
 }
 
 .table {
-  width: 180%; /* ✅ wider to see all columns */
+  width: 140%; /* ✅ wider to see all columns */
   border-collapse: collapse;
   font-size: 0.9rem;
   table-layout: auto;
@@ -447,10 +447,8 @@ include("./includes/sidebar.php");
                   <tr>
                     <th>Dup Group</th>
                     <th>Beneficiary ID</th>
-                    <th>List ID</th>
-                    <th>Source File</th>
                     <th>First Name</th>
-                    <th>Middle Name</th>
+                    <th>Middle Initial</th>
                     <th>Last Name</th>
                     <th>Ext</th>
                     <th>Birth Date</th>
@@ -467,11 +465,9 @@ include("./includes/sidebar.php");
                   <tr>
                     <td><?= htmlspecialchars($r['Dup Group'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Beneficiary ID'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($r['List ID'] ?? '') ?></td>
-                    <td><?= htmlspecialchars(basename($r['Source File'] ?? '')) ?></td>
                     <td><?= htmlspecialchars($r['First Name'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($r['Middle Name'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Last Name'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['Middle Name'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Ext'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Birth Date'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['Region'] ?? '') ?></td>
