@@ -41,7 +41,7 @@
             <div class="card shadow-sm">
               <div class="card-body">
                 <h5 class="card-title">Welcome, <?= htmlspecialchars($_SESSION['authUser']['fullName']) ?>!</h5>
-                <p class="text-muted">This is the DSWD CleanAid admin dashboard. Use the sidebar to navigate through system tools such as data upload, cleaning, and review.</p>
+                <p class="text-muted">This is the DSWD CleanAid admin dashboard. Use the sidebar to navigate through system tools such as data upload, data scanning, and review.</p>
               </div>
             </div>
           </div>
